@@ -82,7 +82,7 @@ cFooter = []
 tagArgsToString :: TagInfo -> Definition
 tagArgsToString tinfo =
   [cedecl|
-     int meta_args_to_string(typename meta_set_t* ts, int i,
+     int meta_args_to_string(const typename meta_set_t* ts, int i,
                             char* buf, typename size_t buf_len) {
        int printed = 0;
        switch(i) {
@@ -128,7 +128,7 @@ tagArgsToString tinfo =
 -- exactly how much size was needed (unlike snprintf and friends).
 tagSetToString :: Definition
 tagSetToString = [cedecl|
-  int meta_set_to_string(typename meta_set_t* ts,
+  int meta_set_to_string(const typename meta_set_t* ts,
                         char* buf,
                         typename size_t buf_len) {
     char* cursor = buf;
@@ -258,12 +258,12 @@ tagToString tags = [cedecl|
 
 printTagSetDebug :: [String]
 printTagSetDebug = [ "void print_meta_set_debug(meta_t tag){"
-              , fmt 1 "print_meta_set((meta_set_t*)tag);"
+              , fmt 1 "print_meta_set((const meta_set_t*)tag);"
               , "}"
               ]
 
 printTagSetFn :: [String]
-printTagSetFn = [ "void print_meta_set(meta_set_t *meta_set){"
+printTagSetFn = [ "void print_meta_set(const meta_set_t *meta_set){"
                , tab 1 ++ "char name[256];"
                , tab 1 ++ "meta_set_to_string(meta_set, name, 256);"
                , tab 1 ++ "printm(\"%s\\n\", name);"
@@ -272,7 +272,7 @@ printTagSetFn = [ "void print_meta_set(meta_set_t *meta_set){"
   
 printDebug :: [String]
 printDebug = [ tab 1 ++ "// print the contents of the input vector"
-             , tab 0 ++ "void print_debug(meta_set_t *pc, meta_set_t *ci, meta_set_t *rs1, meta_set_t *rs2, meta_set_t *rs3, meta_set_t *mem){"
+             , tab 0 ++ "void print_debug(const meta_set_t *pc, const meta_set_t *ci, const meta_set_t *rs1, const meta_set_t *rs2, const meta_set_t *rs3, const meta_set_t *mem){"
              , tab 1 ++ ""
 --             , fmt 1 "printm(\"Sub-Instruction: %d\\n\", subinstr);"
              , fmt 1 "printm(\"PC: %x:\", pc);"
