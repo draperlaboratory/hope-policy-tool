@@ -43,62 +43,45 @@ import Validate
 
 options :: [ OptDescr (Options -> IO Options) ]
 options =
-    [ Option "i" ["ir"]
+    [ Option "v" ["version"]
         (NoArg
-            (\opt -> return opt { optIR = True }))
-        "Dump IR for policy-tool debug"
+            (\_ -> do
+                hPutStrLn stderr "Policy Tool 42"
+                exitWith ExitSuccess))
+        "Print random number"
+ 
+    , Option "m" ["module-dir"]
+        (ReqArg
+             (\arg opt -> return opt { optModuleDir = arg })
+            "<module-dir>")
+        "Set path to base module dir"
+ 
     , Option "o" ["output"]
         (ReqArg
             (\arg opt -> return opt { optOutputDir = arg })
             "<output-dir>")
-        "Output directory path, should point to .../dover-os dir"
+        "Root of output directory tree"
  
     , Option "d" ["debug"]
         (NoArg
             (\opt -> return opt { optDebug = True }))
-        "Enable debug messages from pump miss handler"
-    ]
-{-
-    , Option "r" ["rules"]
+        "Enable policy evaluator debug messages"
+    , Option "i" ["ir"]
         (NoArg
-            (\opt -> return opt { optRules = True }))
-        "Pretty print rules to console"
-
-    , Option "p" ["profile"]
-        (NoArg
-            (\opt -> return opt { optProfile = True }))
-        "Profile number of rule insertions"
-    ]
-    , Option "l" ["logging"]
-        (NoArg
-            (\opt -> return opt { optLogging = True }))
-        "Log rule violations and allow to continue"
-
-    , Option "m" ["metadata"]
-        (ReqArg
-             (\arg opt -> error "-m no longer needed, use -o .../dover-os") --return opt { optMetaData = True, optMetaDataDir = arg })
-            "<output-dir>")
-        "Deprecated, use -o .../dover-os instead"
- 
-    , Option "v" ["version"]
-        (NoArg
-            (\_ -> do
-                hPutStrLn stderr "Policy Tool Too"
---                hPutStrLn stderr $ unlines $ policyVersions knownPolicies
-                exitWith ExitSuccess))
-        "Print policy versions"
- 
+            (\opt -> return opt { optIR = True }))
+        "Dump AST and symbols for policy-tool debug"
     , Option "h" ["help"]
         (NoArg displayHelp)
         "Show help"
     ]
--}
+
 displayHelp :: Options -> IO Options
 displayHelp _ = do
   prg <- getProgName
-  let cl = prg ++ " <options> <main.policy.name>" in do
-    hPutStrLn stderr "\nSpecify fully qualified top level policy name:"
+  let cl = prg ++ " <options> <qualified.module.policy>" in do
     hPutStrLn stderr (usageInfo cl options)
+    hPutStrLn stderr "Ex:   policy-tool -m path/to/mods -o path/to/gen my.cool.securityPolicy"
+    hPutStrLn stderr "      will build \"securityPolicy\" found in: path/to/mods/my/cool.dpl"
     exitWith $ ExitFailure 1
 
   {-

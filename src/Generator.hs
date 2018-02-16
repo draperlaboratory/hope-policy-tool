@@ -57,6 +57,7 @@ data Options = Options  { optIR          :: Bool
                         , optRules       :: Bool
                         , optProfile     :: Bool
                         , optLogging     :: Bool
+                        , optModuleDir   :: String
                         , optOutputDir   :: String
                         , optFileName    :: String
                         }
@@ -67,6 +68,7 @@ defaultOptions = Options { optDebug    = False
                          , optProfile = False
                          , optLogging = False
                          , optIR  = False
+                         , optModuleDir     = "."
                          , optOutputDir     = "."
                          , optFileName     = "policy"
                          }
