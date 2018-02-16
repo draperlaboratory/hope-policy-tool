@@ -39,42 +39,43 @@ import CptPolicy
 import WkTPolicy
 -}
 import AST
-
+import Generator
 import CommonFn
 import PolicyParser
 
 
 
-getAllModules :: [String] -> IO (Either [ErrMsg] [ModuleDecl QSym])
-getAllModules mods = do
-    parsedMods <- getModules mods
+getAllModules :: Options -> [String] -> IO (Either [ErrMsg] [ModuleDecl QSym])
+getAllModules opts mods = do
+    parsedMods <- getModules opts mods
     case lefts parsedMods of
       [] -> return $ Right $ rights parsedMods
       errs -> return $ Left errs
 
-
-getModules :: [String] -> IO [Either ErrMsg (ModuleDecl QSym)]
-getModules [] = return []
-getModules (mn:[]) = getModule [] $ init $ parseDotName mn
-getModules _ = return [Left "Unable to locate top level module" ]
-                
--- recursively search for all imported modules, ignoring cycles
-getModule :: [Either ErrMsg (ModuleDecl QSym)] ->
+getModules :: Options -> [String] -> IO [Either ErrMsg (ModuleDecl QSym)]
+getModules _ [] = return []
+getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
+  where
+    -- recursively search for all imported modules, ignoring cycles
+    getModule :: [Either ErrMsg (ModuleDecl QSym)] ->
                  ModName ->
                  IO [Either ErrMsg (ModuleDecl QSym)]
-getModule ms qmn | alreadyFound qmn ms = return ms
-getModule ms qmn = do
-  exists <- moduleExists qmn
-  if exists
-    then do
-    result <- polParse qmn
-    case result of
-      m@(Right mn) -> let imports = getImports mn in
-                   foldlM getModule (m:ms) imports
-      Left e -> error ("Error parsing module: " ++ e)
-    else
-    error ("Module doesnt exist: " ++  dotName qmn)
+    getModule ms qmn | alreadyFound qmn ms = return ms
+    getModule ms qmn = do
+      exists <- moduleExists opts qmn
+      if exists
+        then do
+        result <- polParse opts qmn
+        case result of
+          m@(Right mn) -> let imports = getImports mn in
+                            foldlM getModule (m:ms) imports
+          Left e -> error ("Error parsing module: " ++ e)
+        else
+        error ("Module doesnt exist: " ++  dotName qmn)
 
+    
+getModules _ _ = return [Left "Unable to locate top level module" ]
+                
 getImports :: ModuleDecl QSym -> [ModName]
 getImports (ModuleDecl _ _ sects) = map importName $ sect importS sects
   where

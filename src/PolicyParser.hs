@@ -40,7 +40,7 @@ import System.Directory
 import CommonTypes
 import ErrorMsg
 import PolicyLexer
---import SrcPrinter
+import Generator
 import AST
 
 type ModuleSym = ModuleDecl QSym
@@ -49,15 +49,15 @@ type SectSym   = SectDecl QSym
 type TagSym = Tag QSym
 type PolicyExSym = PolicyEx QSym
 
-moduleExists :: [FilePath] -> IO Bool
-moduleExists qmn = doesFileExist $ moduleFile qmn
+moduleExists :: Options -> [FilePath] -> IO Bool
+moduleExists opts qmn = doesFileExist $ (optModuleDir opts) </> (moduleFile qmn)
 
 moduleFile :: [FilePath] -> FilePath
 moduleFile qmn = joinPath qmn <.> "dpl"
 
-polParse :: ModName -> IO (Either ErrMsg (ModuleDecl QSym))
-polParse qmn =
-  let file = moduleFile qmn in do
+polParse :: Options -> ModName -> IO (Either ErrMsg (ModuleDecl QSym))
+polParse opts qmn =
+  let file = (optModuleDir opts) </> (moduleFile qmn) in do
     putStrLn ("Reading file: " ++ file)
     contents <- readFile file
 --    putStrLn ("Contents: " ++ contents)

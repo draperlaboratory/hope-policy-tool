@@ -102,7 +102,7 @@ main = do
     args <- getArgs
     (opts, topPolicyName) <- handle args
 
-    modules <- getAllModules topPolicyName
+    modules <- getAllModules opts topPolicyName
     
     case validateModules modules of
           Left errs -> do
