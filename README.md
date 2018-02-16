@@ -7,9 +7,9 @@ Install Instructions
 	 
    * Build policytool:
      * `cd policy-tool`
-       * Need to be on internet when you 'stack build' policy tool the first time to be
+       * Need to be on internet when you 'stack install' policy tool the first time to be
          able to download lots of libraries
-     * `stack build`
+     * `stack install`
 	 * policy-tool gets installed into ~/.local/bin
 
    * add `~/.local/bin' to your path
