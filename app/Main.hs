@@ -56,6 +56,12 @@ options =
             "<module-dir>")
         "Set path to base module dir"
  
+    , Option "f" ["file-prefix"]
+        (ReqArg
+             (\arg opt -> return opt { optFileName = arg })
+            "<file-prefix>")
+        "Set prefix for generated files"
+ 
     , Option "o" ["output"]
         (ReqArg
             (\arg opt -> return opt { optOutputDir = arg })
@@ -84,16 +90,6 @@ displayHelp _ = do
     hPutStrLn stderr "      will build \"securityPolicy\" found in: path/to/mods/my/cool.dpl"
     exitWith $ ExitFailure 1
 
-  {-
-policyDescriptions cp = map document cp
-  where
-    document p = "      " ++ pName p ++ " - "++ (pDescr p)
-                
-policyVersions cp = map document cp
-  where
-    document p = "      " ++ pName p ++ " : "++ ((verStr . pVer)  p)
--}
-  
 verStr :: Integer -> String
 verStr n = show n
 
