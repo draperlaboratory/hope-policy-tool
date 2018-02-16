@@ -43,6 +43,8 @@ import Tags
 -- C code Templates for the generator:
 import GenRuleC
 import GenRuleH
+import GenUtilsC
+import GenUtilsH
 import GenMetaH
 import GenMetaSetC (writeMetaSetCFile)
 import GenMetaSetH (writeMetaSetHFile)
@@ -119,10 +121,12 @@ genFiles opts allSymbols policy = let
     symbols = filter (\(mn,_) -> S.member mn relevantModules) allSymbols
     
     tagSetHFile = path </> "include" </> (optFileName opts) ++ "_meta_set.h"
-    tagSetCFile = path </> "policy" </> (optFileName opts) ++ "_meta_set.c"
+    tagSetCFile = path </> "src" </> (optFileName opts) ++ "_meta_set.c"
 
-    ruleCFile = path </> "policy" </> (optFileName opts) ++ "_rule.c"
+    ruleCFile = path </> "src" </> (optFileName opts) ++ "_rule.c"
     ruleHFile = path </> "include" </> (optFileName opts) ++ "_rule.h"
+    utilsCFile = path </> "src" </> (optFileName opts) ++ "_utils.c"
+    utilsHFile = path </> "include" </> (optFileName opts) ++ "_utils.h"
 
     metaHFile = path </> "include" </> (optFileName opts) ++ "_meta.h"
     metaYFile = path </> (optFileName opts) ++ "_meta.yml"
@@ -131,7 +135,6 @@ genFiles opts allSymbols policy = let
 
     path = addTrailingPathSeparator (optOutputDir opts)
 
-    dumpIR = optIR opts
     debug  = optDebug opts
 
     profile  = optProfile opts
@@ -143,29 +146,36 @@ genFiles opts allSymbols policy = let
   in do
   -- make directory
     createDirectoryIfMissing True $ path
-    createDirectoryIfMissing True $ path </> "policy"
+    createDirectoryIfMissing True $ path </> "src"
     createDirectoryIfMissing True $ path </> "include"
 
     -- tag_set files
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ tagSetCFile
+    hPutStrLn stderr $ "Generating: " ++ tagSetCFile
     writeMetaSetCFile tagSetCFile
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ tagSetHFile
+    hPutStrLn stderr $ "Generating: " ++ tagSetHFile
     writeMetaSetHFile tagSetHFile tagInfo
 
       -- policy_rule files
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ ruleCFile
+    hPutStrLn stderr $ "Generating: " ++ ruleCFile
     writeRuleCFile ruleCFile debug profile logging policy symbols tagInfo
 
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ ruleHFile
+    hPutStrLn stderr $ "Generating: " ++ ruleHFile
     writeRuleHFile ruleHFile debug
 
+      -- policy_utils files
+    hPutStrLn stderr $ "Generating: " ++ utilsCFile
+    writeUtilsCFile utilsCFile tagInfo
+    
+    hPutStrLn stderr $ "Generating: " ++ utilsHFile
+    writeUtilsHFile utilsHFile
+    
       -- policy_metadata files
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ metaHFile
+    hPutStrLn stderr $ "Generating: " ++ metaHFile
     writeMetaHFile metaHFile tagInfo
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ metaYFile
+    hPutStrLn stderr $ "Generating: " ++ metaYFile
     writeMetaYFile metaYFile tagInfo
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ groupsYFile
+    hPutStrLn stderr $ "Generating: " ++ groupsYFile
     writeGroupYFile groupsYFile symbols
-    when dumpIR $ hPutStrLn stderr $ "Generating: " ++ initYFile
+    hPutStrLn stderr $ "Generating: " ++ initYFile
     writeInitYFile initYFile symbols
 
