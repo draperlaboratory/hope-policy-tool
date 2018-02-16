@@ -1,0 +1,60 @@
+name:                policy-tool
+version:             0.1.0.0
+github:              "DoverMicrosystems/policy-tool"
+license:             MIT
+author:              "Andrew Sutherland, Chris Casinghino"
+maintainer:          "andrew@dovermicrosystems.com, ccasinghino@draper.com"
+copyright:           "Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc."
+
+extra-source-files:
+- README.md
+
+# Metadata used when publishing your package
+# synopsis:            Parser for DPL and c-code evaulator generator 
+# category:            Language
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on Github at <https://github.com/DoverMicrosystems/policy-tool/README.md>
+
+dependencies:
+- base >= 4.7 && < 5
+- array
+- containers
+- directory
+- filepath
+- language-c-quote
+- mainland-pretty
+- megaparsec >= 5.0 && <6.0
+- mtl
+- srcloc
+- text
+- unix
+- unordered-containers
+- yaml
+
+library:
+  source-dirs: src
+
+executables:
+  policy-tool:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - policy-tool
+
+tests:
+  policy-tool-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - policy-tool
