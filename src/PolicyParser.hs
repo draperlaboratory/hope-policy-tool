@@ -90,7 +90,7 @@ pSect =  (pImportSect <?> "Imports Section")
      <|> (pTagSect <?> "Metadata Section")
      <|> (pGroupSect <?> "Opgroups Section")
      <|> (pPolicySect <?> "Policy Section")
-     <|> (pInitSect <?> "Requires Section")
+     <|> (pReqSect <?> "Requires Section")
 
 ---------------------------------------------   Import     --------------------------------------------
 pImportSect :: DPLParser SectSym
@@ -320,10 +320,10 @@ pRuleClause = do
       _ <- tok "("
       return name
 
----------------------------------------------    Inits      --------------------------------------------
+---------------------------------------------    Reqs      --------------------------------------------
 
-pInitSect :: DPLParser SectSym
-pInitSect = do
+pReqSect :: DPLParser SectSym
+pReqSect = do
   put lineConsumer
   section <- nonIndented (indentBlock p)
   put spaceConsumer
@@ -331,13 +331,13 @@ pInitSect = do
   where
     p = do
       reserved "require" <* colon;
-      return (indMany Nothing (return.Require) pInitDecl)
+      return (indMany Nothing (return.Require) pReqDecl)
 
-pInitDecl :: DPLParser (RequireDecl QSym)
-pInitDecl =  pInit -- maybe some more requires key words later
+pReqDecl :: DPLParser (RequireDecl QSym)
+pReqDecl =  pReq -- maybe some more requires key words later
 
-pInit :: DPLParser (RequireDecl QSym)
-pInit = Init <$> getPosition <*> (reserved "init" *> reqQName) <*> pInitSet
+pReq :: DPLParser (RequireDecl QSym)
+pReq = Init <$> getPosition <*> (reserved "init" *> reqQName) <*> pReqSet
 
 -- parse everything including whitespace upto '{', then strip trailing whitespace
 reqQName :: DPLParser String
@@ -346,49 +346,10 @@ reqQName = do
     xp <- someTill anyChar (lookAhead $ char '{')
     return $ unpack . dropWhileEnd (==' ') . pack $ xp
 
-{-
-pDefault :: DPLParser (InitDecl QSym)
-pDefault = Default <$> getPosition <*> (reserved "default" *> equals *> pInitSet)
 
-pSymbol :: DPLParser (InitDecl QSym)
-pSymbol = Symbol <$> getPosition <*> (reserved "symbol" *> elfId) <*> (equals *> pInitSet)
+pReqSet :: DPLParser (InitSet QSym)
+pReqSet = ISExact <$> getPosition <*> braces (sepBy pTag comma)
 
-pRange :: DPLParser (InitDecl QSym)
---pDuring = During <$> (reserved "during" *> elfId) <*> (equals *> pInitSet)
-pRange = Range <$> getPosition <*> (reserved "range" *> elfId) <*> elfId <*> (equals *> pInitSet)
-
-pZero :: DPLParser (InitDecl QSym)
-pZero = Zero <$> getPosition <*> (reserved "zero" *> equals *> pInitSet)
-
-pSection :: DPLParser (InitDecl QSym)
-pSection = Section <$> getPosition <*> (reserved "section" *> elfId) <*> (equals *> pInitSet)
-
-pFlag :: DPLParser (InitDecl QSym)
-pFlag = Flag <$> getPosition <*> (reserved "flag" *> pElfFlag) <*> (equals *> pInitSet)
-
-pMeta :: DPLParser (InitDecl QSym)
-pMeta = Meta <$> getPosition <*> (reserved "meta" *> elfId) <*> (equals *> pInitSet)
--}
-
-pInitSet :: DPLParser (InitSet QSym)
-pInitSet = ISExact <$> getPosition <*> braces (sepBy pTag comma)
-
-{-
-pElfFlag :: DPLParser ElfFlg
-pElfFlag = pElfW <|> pElfA <|> pElfX
-
-elfId :: DPLParser String
-elfId = lexeme $ some (alphaNumChar <|> oneOf "_-")
-
-pElfW :: DPLParser ElfFlg
-pElfW = Write <$ (symbol "SHF_WRITE")
-
-pElfA :: DPLParser ElfFlg
-pElfA = Alloc <$ symbol "SHF_ALLOC"
-
-pElfX :: DPLParser ElfFlg
-pElfX = Exec <$ symbol "SHF_EXECINSTR"
--}
 
 ---------------------------------------------   Group      --------------------------------------------
 
