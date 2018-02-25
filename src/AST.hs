@@ -155,9 +155,9 @@ data PolicyEx n = PEVar SourcePos n
 
 ---------------------------------------------    Requires      --------------------------------------------
 
-data RequireDecl n = Init SourcePos String (InitSet n)
+data RequireDecl n = Init SourcePos [String] (InitSet n)
   deriving (Show, Eq, Functor, Foldable)
-
+{-
 data InitDecl n = Default SourcePos String (Maybe String) (InitSet n)
                 | Symbol SourcePos String (Maybe String) (InitSet n)
                 | Range SourcePos String String (Maybe String) (InitSet n)
@@ -166,7 +166,7 @@ data InitDecl n = Default SourcePos String (Maybe String) (InitSet n)
                 | Flag SourcePos ElfFlg (Maybe String) (InitSet n)
                 | Meta SourcePos String (Maybe String) (InitSet n)
   deriving (Show, Eq, Functor, Foldable)
-
+-}
 data InitSet n = ISExact SourcePos [Tag n]
   deriving (Show, Eq, Functor, Foldable)
            

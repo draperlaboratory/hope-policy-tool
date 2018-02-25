@@ -47,9 +47,8 @@ writeInitYFile
      -> IO ()
 writeInitYFile yFile symbols = encodeFile yFile $ reqsYml $ map pathify $ initSetFns symbols
   where
-    pathify :: (String, [Tag QSym]) -> ([Text], [Tag QSym])
-    pathify ('/':p, t) = (splitOn "/" $ pack p, t)
-    pathify (p, t) = (splitOn "/" $ pack p, t)
+    pathify :: ([String], [Tag QSym]) -> ([Text], [Tag QSym])
+    pathify (p, t) = (map pack p, t)
 
 reqsYml :: [([Text], [Tag QSym])] -> Value
 reqsYml reqs = object [ "requires" .= (foldl reqYml (object [])  reqs)]
@@ -70,7 +69,7 @@ mkTagVal (Tag _ qSym fields) = object [ "name"     .= (qualSymStr qSym)
                                       , "fields"   .= (map mkField fields)
                                    ]
 
-initSetFns :: [(ModName, SymbolTable QSym)] -> [(String, [Tag QSym])]
+initSetFns :: [(ModName, SymbolTable QSym)] -> [([String], [Tag QSym])]
 initSetFns symbols = map unique $ map combine everyTag
   where
     -- group together common Fn defs
@@ -83,7 +82,7 @@ initSetFns symbols = map unique $ map combine everyTag
     mkSystemFn (rqn, _) = (rqn, [])
     -- helpers to merge common Fn defs for each unique entity
     unique (n, ts) = (n, nubWith qsym $ sortWith qsym ts)
-    combine = foldr merge ("",[])
+    combine = foldr merge ([],[])
     merge (n, ts) (_, ts2) = (n, ts2 ++ ts)
 
 allRequires :: [(ModName, SymbolTable n)] -> [(ModName, RequireDecl n)]

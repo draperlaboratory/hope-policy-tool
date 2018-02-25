@@ -337,15 +337,16 @@ pReqDecl :: DPLParser (RequireDecl QSym)
 pReqDecl =  pReq -- maybe some more requires key words later
 
 pReq :: DPLParser (RequireDecl QSym)
-pReq = Init <$> getPosition <*> (reserved "init" *> reqQName) <*> pReqSet
+pReq = Init <$> getPosition <*> (reserved "init" *> pQName) <*> pReqSet
 
+{- Obsolete
 -- parse everything including whitespace upto '{', then strip trailing whitespace
 reqQName :: DPLParser String
 reqQName = do
   lexeme $ do
     xp <- someTill anyChar (lookAhead $ char '{')
     return $ unpack . dropWhileEnd (==' ') . pack $ xp
-
+-}
 
 pReqSet :: DPLParser (InitSet QSym)
 pReqSet = ISExact <$> getPosition <*> braces (sepBy pTag comma)
