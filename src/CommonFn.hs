@@ -127,7 +127,7 @@ typeName :: QSym -> String
 typeName = map toLower . intercalate "_" . qName
 
 tagName :: QSym -> String
-tagName = intercalate "_" . qName
+tagName = reqName . intercalate "_" . qName
 
 tagString :: QSym -> String
 tagString = intercalate "." . qName

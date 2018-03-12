@@ -337,7 +337,10 @@ pReqDecl :: DPLParser (RequireDecl QSym)
 pReqDecl =  pReq -- maybe some more requires key words later
 
 pReq :: DPLParser (RequireDecl QSym)
-pReq = Init <$> getPosition <*> (reserved "init" *> pQName) <*> pReqSet
+pReq = Init <$> getPosition <*> (reserved "init" *> pEntName) <*> pReqSet
+
+pEntName :: DPLParser [String]
+pEntName = lexeme $ sepBy1 entity dot
 
 {- Obsolete
 -- parse everything including whitespace upto '{', then strip trailing whitespace
@@ -477,6 +480,9 @@ identifier = (lexeme . try) (p >>= check)
     check x = if x `elem` rws
                 then fail $ "keyword " ++ show x ++ " cannot be an identifier"
                 else return x
+
+entity :: DPLParser String
+entity = lexeme $ many ((try alphaNumChar) <|> oneOf "_-")
 
 pQName :: DPLParser [String]
 pQName = lexeme $ sepBy1 identifier dot
