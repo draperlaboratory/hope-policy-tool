@@ -760,7 +760,7 @@ translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],default
 
         checkField :: (Word32,Exp) -> Exp
         checkField (idx,val) =
-          [cexp|((($id:ts->tags)[$exp:idx]) & $id:mask[idx]) == $exp:val|]
+          [cexp|((($id:ts->tags)[$exp:idx]) & $id:mask[$idx]) == $exp:val|]
 
 
     -- These build a C boolean expression that checks whether a tag set (first
