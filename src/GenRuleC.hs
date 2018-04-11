@@ -760,7 +760,7 @@ translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],default
 
         checkField :: (Word32,Exp) -> Exp
         checkField (idx,val) =
-          [cexp|((($id:ts->tags)[$exp:idx]) & $id:mask[idx]) == $exp:val|]
+          [cexp|((($id:ts->tags)[$exp:idx]) & $id:mask[$idx]) == $exp:val|]
 
 
     -- These build a C boolean expression that checks whether a tag set (first
@@ -802,7 +802,7 @@ translateRuleResult :: String -> (QSym -> Maybe String) -> [(QSym,Exp)]
                     -> TagInfo -> RuleResult QSym -> [BlockItem]
 -- handle the explicit failure case by printing a message and return failure                    
 translateRuleResult _ _ _ _ (RRFail _ msg) = [citems|
-                                                  debug_msg($id:contextArgName, $string:("Failure: " ++ msg ++ "\n"));
+                                                  $id:contextArgName->fail_msg = $string:msg;
                                                   return $id:policyEFailName;|]
 translateRuleResult mask ogMap varMap tagInfo (RRUpdate _ updates) =
      (concatMap (translateBoundGroupEx mask ogMap varMap tagInfo) updates)

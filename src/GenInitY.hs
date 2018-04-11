@@ -51,7 +51,7 @@ writeInitYFile yFile symbols = encodeFile yFile $ reqsYml $ map pathify $ initSe
     pathify (p, t) = (map pack p, t)
 
 reqsYml :: [([Text], [Tag QSym])] -> Value
-reqsYml reqs = object [ "requires" .= (foldl reqYml (object [])  reqs)]
+reqsYml reqs = object [ "Require" .= (foldl reqYml (object [])  reqs)]
 
 reqYml :: Value -> ([Text], [Tag QSym]) -> Value
 reqYml (Object _) ([], tags) = object [ "metadata" .=  (map mkTagVal tags)]
