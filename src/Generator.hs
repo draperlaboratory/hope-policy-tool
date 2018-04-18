@@ -51,6 +51,7 @@ import GenMetaSetH (writeMetaSetHFile)
 
 -- Runtime encoding information
 import GenMetaY
+import GenModuleY
 import GenInitY
 import GenGroupY
 import GenEntityY
@@ -132,6 +133,7 @@ genFiles opts allSymbols policy = let
     utilsHFile = path </> "include" </> (optFileName opts) ++ "_utils.h"
 
     metaHFile = path </> "include" </> (optFileName opts) ++ "_meta.h"
+    modYFile = path </> (optFileName opts) ++ "_modules.yml"
     metaYFile = path </> (optFileName opts) ++ "_meta.yml"
     initYFile = path </> (optFileName opts) ++ "_init.yml"
     entityYFile = path </> (optFileName opts) ++ "_entities.yml"
@@ -180,6 +182,8 @@ genFiles opts allSymbols policy = let
     writeMetaHFile metaHFile tagInfo
     hPutStrLn stderr $ "Generating: " ++ metaYFile
     writeMetaYFile metaYFile tagInfo
+    hPutStrLn stderr $ "Generating: " ++ modYFile
+    writeModYFile modYFile symbols
     hPutStrLn stderr $ "Generating: " ++ groupsYFile
     writeGroupYFile groupsYFile symbols
     hPutStrLn stderr $ "Generating: " ++ initYFile
