@@ -124,7 +124,7 @@ parseDashName = words . map toWords
     toWords c = c
 
 typeName :: QSym -> String
-typeName = map toLower . intercalate "_" . qName
+typeName = reqName . map toLower . intercalate "_" . qName
 
 tagName :: QSym -> String
 tagName = reqName . intercalate "_" . qName
