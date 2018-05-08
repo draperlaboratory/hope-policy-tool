@@ -84,7 +84,7 @@ writeRuleCFile
 writeRuleCFile cFile debug profile _logging policy symbols tinfo =
   writeFile cFile $ unlines $                                                  -- Write the impl file, consisting of:
   cHeader debug profile ++ (blank 1) ++
-  [renderC $    policyResultConsts ++ policyTypeHelpers symbols
+  [renderC $     ruleLogStructure symbols policy ++ policyResultConsts ++ policyTypeHelpers symbols
              ++ translateTopPolicy debug profile symbols tinfo policy]
 
   {-
@@ -93,7 +93,48 @@ writeRuleCFile cFile debug profile _logging policy symbols tinfo =
   cFooter
 -}
 
--- Constant definitions for policy evaluation results
+ruleLogStructure :: ModSymbols -> Maybe (PolicyDecl QSym) -> [Definition]
+ruleLogStructure _ Nothing = []
+ruleLogStructure ms (Just p) = 
+  [cunit|
+    const int ruleLogMax = $int:(polCount p);
+    char* ruleLog[$int:(polCount p + 1)];
+    int ruleLogIdx = 0;
+
+        void logRuleEval(const char* ruleDescription) {
+          if(ruleLogIdx < ruleLogMax){
+            ruleLog[ruleLogIdx] = ruleDescription;
+            if(ruleLogIdx <= ruleLogMax){
+              ruleLogIdx++;
+            }
+          }
+        }
+        void logRuleInit() {
+          ruleLogIdx = 0;
+          ruleLog[ruleLogMax] = "additional rules omitted...";
+        }
+        const char* nextLogRule(int* idx) {
+          if(*idx < ruleLogIdx)
+            return ruleLog[(*idx)++];
+          return 0;
+        }
+  |]
+    where
+      -- use count of policy names as proxy for the number of possible rule evals
+      -- TODO: perform a more accurate count
+      polCount :: PolicyDecl QSym -> Int
+      polCount (PolicyDecl _ _ _ pex) = 1 + pexCount pex
+      pexCount :: PolicyEx QSym -> Int
+      pexCount (PEVar _ qn) = case lookupPolicy ms qn of
+                              Nothing -> 0
+                              Just p -> polCount p
+
+      pexCount (PECompExclusive _ lhs rhs) = pexCount lhs + pexCount rhs
+      pexCount (PECompPriority _ lhs rhs) =  pexCount lhs + pexCount rhs
+      pexCount (PECompModule _ lhs rhs) =  pexCount lhs + pexCount rhs
+      pexCount (PERule _ _) = 0
+
+  -- Constant definitions for policy evaluation results
 policyResultConsts :: [Definition]
 policyResultConsts =
   [cunit|
@@ -585,13 +626,13 @@ policyEval debug _profile ms ogMap tagInfo pd@(PolicyDecl _ _ _ pEx) =
    body :: Stm
    body = Block p' noLoc
      where
-       p' = translatePolicy debug ms ogMap (policyMaskName pd) tagInfo resultVar pEx
+       p' = translatePolicy debug ms ogMap pd tagInfo resultVar pEx
 
 -- Takes as arguments:
 --  - whether to print debug info
 --  - The global symbol table
 --  - Info about opgroups
---  - the name of this policy's mask
+--  - the policy declaration (used for policy name)
 --  - the tag encoding list
 --  - a variable name x where the result should be stored
 --  - the policy itself.
@@ -601,31 +642,32 @@ policyEval debug _profile ms ogMap tagInfo pd@(PolicyDecl _ _ _ pEx) =
 -- statements will set x to one of policySuccessName, policyIFailName, or
 -- policyEFailName.  In the first case, the function will add the appropriate
 -- tags from this policy to the array of result tag lists.
-translatePolicy :: Bool -> ModSymbols -> OpGroupMap -> String
+translatePolicy :: Bool -> ModSymbols -> OpGroupMap ->  PolicyDecl QSym
                 -> TagInfo -> String
                 -> PolicyEx QSym -> [BlockItem]
-translatePolicy dbg ms ogMap mask tagInfo pass (PEVar _ x) =
+translatePolicy dbg ms ogMap pd tagInfo pass (PEVar _ x) =
   case lookupPolicy ms x of
     Nothing -> error $ "Unknown policy name " ++ show x
-    Just (PolicyDecl _ _ _ p) -> translatePolicy dbg ms ogMap mask tagInfo pass p
-translatePolicy dbg ms ogMap mask tagInfo pass (PECompExclusive _ p1 p2) =
+    Just (PolicyDecl _ _ _ p) -> translatePolicy dbg ms ogMap pd tagInfo pass p
+translatePolicy dbg ms ogMap pd tagInfo pass (PECompExclusive _ p1 p2) =
   [citems|$items:p1';
           if ($id:pass == $id:policyIFailName) {
             $items:p2'
           }|]
   where
-     p1' = translatePolicy dbg ms ogMap mask tagInfo pass p1
-     p2' = translatePolicy dbg ms ogMap mask tagInfo pass p2
-translatePolicy dbg ms ogMap mask tagInfo pass (PECompPriority l p1 p2) =
-  translatePolicy dbg ms ogMap mask tagInfo pass (PECompExclusive l p1 p2)
+     p1' = translatePolicy dbg ms ogMap pd tagInfo pass p1
+     p2' = translatePolicy dbg ms ogMap pd tagInfo pass p2
+translatePolicy dbg ms ogMap pd tagInfo pass (PECompPriority l p1 p2) =
+  translatePolicy dbg ms ogMap pd tagInfo pass (PECompExclusive l p1 p2)
 translatePolicy _ _ _ _ _ _ (PECompModule _ _p1 _p2) =
   error "Unsupported: PECompModule in translatePolicy"
-translatePolicy dbg _ ogMap mask tagInfo pass (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
+translatePolicy dbg _ ogMap pd tagInfo pass (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
   [citems|
        if(ms_contains($id:ciArgName,$id:(tagName (groupPrefix ogrp)))) {
          $id:pass = $exp:patExp;
          if ($id:pass) {
            $stms:debugPrints
+           $stms:ruleEvalLog
            $items:ruleResult
          } else {
            $id:pass = $id:policyIFailName;
@@ -633,6 +675,7 @@ translatePolicy dbg _ ogMap mask tagInfo pass (PERule _ rc@(RuleClause _ ogrp rp
        }
    |]
   where
+    mask = policyMaskName pd
     patExp :: Exp
     boundNames :: [(QSym,Exp)]
     (patExp,boundNames) = translatePatterns mask tagInfo oprLookup rpat
@@ -653,6 +696,11 @@ translatePolicy dbg _ ogMap mask tagInfo pass (PERule _ rc@(RuleClause _ ogrp rp
           debug_msg($id:contextArgName, $string:("rule match: " ++ (compactShowRule rc) ++ "\n"));
         |]
       else []
+    ruleEvalLog :: [Stm]
+    ruleEvalLog =
+        [cstms|
+          logRuleEval($string:(qualifiedShowRule pd rc));
+        |]
 
 -- Args:
 --   - The policy mask
@@ -678,6 +726,7 @@ translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],default
     defaultEnv :: [(QSym,Exp)]
     defaultEnv = [(QVar ["env"],[cexp|$id:pcArgName|])]
     patternAcc :: (Exp,[(QSym,Exp)]) -> BoundGroupPat QSym
+    
                -> (Exp,[(QSym,Exp)])
     patternAcc (e,ids) pat =
       foldl' addBindings ([cexp|$exp:e' && $exp:e|],ids) ids'

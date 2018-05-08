@@ -256,6 +256,9 @@ camelToUnder [] = []
 camelToUnder (c:cs) | isUpper c = '_':(toLower c):(camelToUnder cs)
 camelToUnder (c:cs) = c:(camelToUnder cs)
 
+qualifiedShowRule :: PolicyDecl QSym -> RuleClause QSym -> String
+qualifiedShowRule p rc = policyDotName p ++ ":" ++ compactShowRule rc
+
 -- Compact rule pattern display for debugging
 compactShowRule :: RuleClause QSym -> String
 compactShowRule (RuleClause _ og pats _) =
