@@ -53,6 +53,7 @@ import GenMetaSetH (writeMetaSetHFile)
 import GenMetaY
 import GenInitY
 import GenGroupY
+import GenEntityY
 
 data Options = Options  { optIR          :: Bool
                         , optDebug       :: Bool
@@ -60,6 +61,7 @@ data Options = Options  { optIR          :: Bool
                         , optProfile     :: Bool
                         , optLogging     :: Bool
                         , optModuleDir   :: String
+                        , optTargetDir   :: String
                         , optOutputDir   :: String
                         , optFileName    :: String
                         }
@@ -70,8 +72,9 @@ defaultOptions = Options { optDebug    = False
                          , optProfile = False
                          , optLogging = False
                          , optIR  = False
-                         , optModuleDir     = "."
-                         , optOutputDir     = "."
+                         , optModuleDir     = ""
+                         , optTargetDir     = ""
+                         , optOutputDir     = ""
                          , optFileName     = "policy"
                          }
 {-                 
@@ -131,6 +134,7 @@ genFiles opts allSymbols policy = let
     metaHFile = path </> "include" </> (optFileName opts) ++ "_meta.h"
     metaYFile = path </> (optFileName opts) ++ "_meta.yml"
     initYFile = path </> (optFileName opts) ++ "_init.yml"
+    entityYFile = path </> (optFileName opts) ++ "_entities.yml"
     groupsYFile = path </> (optFileName opts) ++ "_group.yml"
 
     path = addTrailingPathSeparator (optOutputDir opts)
@@ -143,6 +147,8 @@ genFiles opts allSymbols policy = let
     tagInfo :: TagInfo
     tagInfo = buildTagInfo symbols
 
+    targetPath = optTargetDir opts
+    
   in do
   -- make directory
     createDirectoryIfMissing True $ path
@@ -177,5 +183,7 @@ genFiles opts allSymbols policy = let
     hPutStrLn stderr $ "Generating: " ++ groupsYFile
     writeGroupYFile groupsYFile symbols
     hPutStrLn stderr $ "Generating: " ++ initYFile
-    writeInitYFile initYFile symbols
+    writeInitYFile initYFile symbols 
+    hPutStrLn stderr $ "Generating: " ++ entityYFile
+    writeEntityYFile entityYFile targetPath
 

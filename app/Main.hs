@@ -56,6 +56,12 @@ options =
             "<module-dir>")
         "Set path to base module dir"
  
+    , Option "t" ["target-dir"]
+        (ReqArg
+             (\arg opt -> return opt { optTargetDir = arg })
+            "<target-dir>")
+        "Set path to base target description dir"
+ 
     , Option "f" ["file-prefix"]
         (ReqArg
              (\arg opt -> return opt { optFileName = arg })
@@ -98,6 +104,25 @@ main = do
     args <- getArgs
     (opts, topPolicyName) <- handle args
 
+    case checkErrs opts topPolicyName of
+      [] -> do
+        processMods opts topPolicyName
+      msgs -> do
+        hPutStrLn stderr $ unlines msgs
+
+
+optFldErrs = [ (optModuleDir, "Error: missing -m <module directory path>")
+             , (optTargetDir, "Error: missing -t <target directory path>")
+             , (optOutputDir, "Error: missing -o <output directory path>")
+             ]
+
+checkErrs  :: Options -> [String] -> [String]
+checkErrs opts topPolicyName = map snd $ filter isError optFldErrs
+  where
+    isError (f,e) = f opts == ""
+
+processMods :: Options -> [String] -> IO()
+processMods opts topPolicyName = do
     modules <- getAllModules opts topPolicyName
     
     case validateModules modules of
