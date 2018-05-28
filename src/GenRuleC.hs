@@ -26,6 +26,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
 module GenRuleC (writeRuleCFile) where
 
 import GenUtils(renderC, blank)
@@ -350,10 +351,15 @@ policyMask ms tinfo pd@(PolicyDecl _ PLLocal pnm _) =
         bi :: Exp -> (Maybe Designation,Initializer)
         bi e = (Nothing,ExpInitializer e noLoc)
 
+    -- We construct fieldMasks from two components: the actual tags
+    -- declared in this module (declaredTags) and also all the
+    -- opgroups, since they count as "relevant" to this policy.
     fieldMasks :: [Exp]
     fieldMasks = fixedTagSetFields tinfo $
-      map (\(TagDecl _ nm args) -> (nm, replicate (length args) [cexp|0xFFFFFFFF|]))
-          declaredTags
+         (map (\(TagDecl _ nm args) ->
+                     (nm, replicate (length args) [cexp|0xFFFFFFFF|]))
+              declaredTags)
+      ++ (map (,[]) $ tiGroupNames tinfo)
     
     declaredTags :: [TagDecl QSym]
     declaredTags = moduleTags ms $ modName pnm
