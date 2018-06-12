@@ -56,6 +56,9 @@ data TagInfo =
            tiTagNames :: [QSym],
            -- All tag names.  The domain of tiTagBitPositions
 
+           tiGroupNames :: [QSym],
+           -- All opgroup names.  A subset of tiTagNames.
+
            tiTagBitPositions :: M.Map QSym Word32,
            -- A map from tag names to the position of the bit that indicates the
            -- tag's presence.
@@ -104,6 +107,7 @@ buildTagInfo ms =
            tiArrayLength = tiNumBitFields + tiNumDataArgs,
 
            tiTagNames = map qsym declaredTags,
+           tiGroupNames = map qsym ogFakeTagDecls,
            tiTagBitPositions = M.fromList $ zip (map qsym declaredTags)
                                                 [minTagNumber..],
            tiTagArgInfo = dataArgInfo}
@@ -123,12 +127,12 @@ buildTagInfo ms =
         actualDecls :: [TagDecl QSym]
         actualDecls = map snd $ concatMap (tagSyms . snd) ms
 
+    ogFakeTagDecls :: [TagDecl QSym]
+    ogFakeTagDecls = map (makeOGDecl . snd) $ concatMap (groupSyms . snd) ms
+      where
         makeOGDecl :: GroupDecl a QSym -> TagDecl QSym
         makeOGDecl (GroupDecl sp nm _ _ _) = TagDecl sp (groupPrefix nm) []
         
-        ogFakeTagDecls :: [TagDecl QSym]
-        ogFakeTagDecls = map (makeOGDecl . snd) $ concatMap (groupSyms . snd) ms
-
 --    relevantTags :: [TagDecl QSym]
 --    relevantTags = sort $
 --      mapMaybe (\tdcl -> if S.member (qsym tdcl) usedTags then Just tdcl else Nothing)

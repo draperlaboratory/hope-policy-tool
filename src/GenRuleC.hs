@@ -26,6 +26,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
 module GenRuleC (writeRuleCFile) where
 
 import GenUtils(renderC, blank)
@@ -58,15 +59,17 @@ import qualified Data.Map as M
 --resultsSizeMacro, resultsPCMacro, resultsRDMacro, resultsCSRMacro :: String
 --resultsSizeMacro = "RULE_DEST_COUNT"
 
-policySuccessName, policyIFailName, policyEFailName :: String
+policySuccessName, policyIFailName, policyEFailName, policyErrorName :: String
 policySuccessName = "policySuccess"
 policyIFailName   = "policyImpFailure"
 policyEFailName   = "policyExpFailure"
+policyErrorName   = "policyErrorFailure"
 
-policySuccessVal, policyIFailVal, policyEFailVal :: Int
+policySuccessVal, policyIFailVal, policyEFailVal, policyErrorVal :: Int
 policySuccessVal = 1
 policyIFailVal   = -1
 policyEFailVal   = 0
+policyErrorVal   = -2
 
 -- --------------------------------------------------------------------------------------
 
@@ -138,6 +141,7 @@ ruleLogStructure ms (Just p) =
 policyResultConsts :: [Definition]
 policyResultConsts =
   [cunit|
+    const int $id:policyErrorName = $int:policyErrorVal;
     const int $id:policyEFailName = $int:policyEFailVal;
     const int $id:policyIFailName = $int:policyIFailVal;
     const int $id:policySuccessName = $int:policySuccessVal;
@@ -373,6 +377,9 @@ policyMaskName :: PolicyDecl QSym -> String
 policyMaskName (PolicyDecl _ _ n _) =
   "policy_mask_" ++ (unqualSymStr n)
 
+ogMaskName :: String
+ogMaskName = "og_mask"
+
 policyMask :: ModSymbols -> TagInfo -> PolicyDecl QSym -> Definition
 policyMask _ (TagInfo {tiArrayLength}) pd@(PolicyDecl _ PLGlobal _ _) =
   [cedecl|const typename uint32_t $id:(policyMaskName pd)[META_SET_WORDS] = $init:initializer;|]
@@ -391,13 +398,31 @@ policyMask ms tinfo pd@(PolicyDecl _ PLLocal pnm _) =
         bi :: Exp -> (Maybe Designation,Initializer)
         bi e = (Nothing,ExpInitializer e noLoc)
 
+    -- We construct fieldMasks from the actual tags
+    -- declared in this module (declaredTags)
     fieldMasks :: [Exp]
     fieldMasks = fixedTagSetFields tinfo $
-      map (\(TagDecl _ nm args) -> (nm, replicate (length args) [cexp|0xFFFFFFFF|]))
-          declaredTags
+         (map (\(TagDecl _ nm args) ->
+                     (nm, replicate (length args) [cexp|0xFFFFFFFF|]))
+              declaredTags)
     
     declaredTags :: [TagDecl QSym]
     declaredTags = moduleTags ms $ modName pnm
+
+    -- We construct fieldMasks from
+    -- opgroups, since they count as "relevant" to this policy.
+ogMasks :: TagInfo -> [Definition]
+ogMasks tinfo =  [cedecl|const typename uint32_t $id:(ogMaskName)[META_SET_WORDS] = $init:initializer;|]:[]
+  where
+    initializer :: Initializer
+    initializer = CompoundInitializer (map bi ogMask) noLoc
+      where
+        bi :: Exp -> (Maybe Designation,Initializer)
+        bi e = (Nothing,ExpInitializer e noLoc)
+        ogMask :: [Exp]
+        ogMask = fixedTagSetFields tinfo (map (,[]) $ tiGroupNames tinfo)
+    
+
 
 
 -- Given a collection of tags, this computes the corresponding tag set array, as
@@ -482,7 +507,7 @@ translateTopPolicy _debug _profile _ms _ Nothing =
           return $id:policySuccessName;
         }|] ]
 translateTopPolicy debug profile ms tinfo (Just (PolicyDecl _ _ _ p)) =
-  policyMasks ++ evalHelpers ++ 
+  ogMasks tinfo ++ policyMasks ++ evalHelpers ++ 
     [ [cedecl|
         int eval_policy ($params:policyInputParams) {
           int $id:resultVar = $id:policyIFailName;
@@ -684,7 +709,7 @@ translatePolicy dbg _ ogMap pd tagInfo pass (PERule _ rc@(RuleClause _ ogrp rpat
         oprLookup = patOperandLookup ogMap ogrp
 
     ruleResult :: [BlockItem]
-    ruleResult = translateRuleResult mask oprLookup boundNames tagInfo rres
+    ruleResult = translateRuleResult mask oprLookup boundNames tagInfo pass rres
       where
         oprLookup :: QSym -> Maybe String
         oprLookup = expOperandLookup ogMap ogrp
@@ -841,6 +866,7 @@ translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],default
 --   - The name of the policy mask
 --   - A function that associates operands to C macros based on the opgroup.
 --   - A mapping from policy variables to C expressions.
+--   - The name of the result variable
 --   - The result to be translated.
 -- Results:
 --   - A series of statements.  These will have the result of returning
@@ -848,19 +874,20 @@ translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],default
 --     the rule result is to generate new tags, they'll assign new tags into the
 --     result array and return policySuccess from the current function.
 translateRuleResult :: String -> (QSym -> Maybe String) -> [(QSym,Exp)]
-                    -> TagInfo -> RuleResult QSym -> [BlockItem]
+                    -> TagInfo -> String -> RuleResult QSym -> [BlockItem]
 -- handle the explicit failure case by printing a message and return failure                    
-translateRuleResult _ _ _ _ (RRFail _ msg) = [citems|
+translateRuleResult _ _ _ _ _ (RRFail _ msg) = [citems|
                                                   $id:contextArgName->fail_msg = $string:msg;
                                                   return $id:policyEFailName;|]
-translateRuleResult mask ogMap varMap tagInfo (RRUpdate _ updates) =
-     (concatMap (translateBoundGroupEx mask ogMap varMap tagInfo) updates)
-  ++ [ [citem|return $id:policySuccessName;|] ]
+translateRuleResult mask ogMap varMap tagInfo pass (RRUpdate _ updates) =
+     (concatMap (translateBoundGroupEx mask ogMap varMap tagInfo pass) updates)
+  ++ [ [citem|return $id:pass;|] ]
 
 -- Arguments:
 --   - The name of the policy mask
 --   - A function that associates operands to C macros based on the opgroup.
 --   - A mapping from policy tag set variables to C tag set variables.
+--   - The name of the result variable     
 --   - The BoundGroupEx to be translated.
 -- Results:
 --  - A series of statements that compute a revised tag set and store it into
@@ -869,8 +896,8 @@ translateRuleResult mask ogMap varMap tagInfo (RRUpdate _ updates) =
 -- This relies on a recursive helper function that descends through the tag set
 -- expression and roughly implements the judgment from the pdf.
 translateBoundGroupEx :: String -> (QSym -> Maybe String) -> [(QSym,Exp)]
-                      -> TagInfo -> BoundGroupEx QSym -> [BlockItem]
-translateBoundGroupEx mask ogMap varMap tagInfo (BoundGroupEx loc opr tse) =
+                      -> TagInfo -> String -> BoundGroupEx QSym -> [BlockItem]
+translateBoundGroupEx mask ogMap varMap tagInfo pass (BoundGroupEx loc opr tse) =
   case ogMap opr of
     Nothing -> error $ "Rule result uses invalid operand " ++ show opr
                         ++ "(" ++ show loc ++ ")"
@@ -879,8 +906,15 @@ translateBoundGroupEx mask ogMap varMap tagInfo (BoundGroupEx loc opr tse) =
         { typename meta_set_t $id:topVar;
           $items:evalItems;
           for(int i = 0; i < META_SET_BITFIELDS; i++) {
-            ($id:resPositionName)->tags[i] |=
-              ($id:topVar.tags[i] & $id:mask[i]);
+            if((($id:resPositionName)->tags[i] & $id:ogMaskName[i]) == 0) {
+              ($id:resPositionName)->tags[i] |=
+                ($id:topVar.tags[i] & ($id:mask[i] | $id:ogMaskName[i]));
+            }
+            else {
+              if((($id:resPositionName)->tags[i] & $id:ogMaskName[i]) != ( $id:topVar.tags[i] & $id:ogMaskName[i])) {
+                $id:pass = $id:policyErrorName;
+              }
+            }
           }
           for(int i = META_SET_BITFIELDS; i < META_SET_WORDS; i++) {
             if($id:mask[i]) {
