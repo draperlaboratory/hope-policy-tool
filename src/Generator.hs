@@ -39,6 +39,7 @@ import SrcPrinter
 import Symbols
 import Debug
 import Tags
+import Validate
 
 -- C code Templates for the generator:
 import GenRuleC
@@ -115,15 +116,24 @@ genModule opts md =
 
 genFiles :: Options
          -> ModSymbols
+         -> [(ModName, QSym)]
+         -> [(ModName, QSym)]
+         -> ModName
          -> Maybe (PolicyDecl QSym)
          -> IO ()
-genFiles opts allSymbols policy = let
+genFiles opts allModSymTables policySyms requireSyms topMod policy = let
+
+  {- No longer needed, 
     relevantModules :: S.Set ModName
-    relevantModules = usedModules allSymbols policy
+    relevantModules = S.fromList usedModules
   
     symbols :: ModSymbols
-    symbols = filter (\(mn,_) -> S.member mn relevantModules) allSymbols
-    
+    symbols = filter (\(mn,_) -> S.member mn relevantModules) allModSymTables
+    -}
+-- Use this instead
+    allUsedSyms = nubSymbols (policySyms ++ requireSyms)
+    relevantModules = S.fromList $ map fst allUsedSyms
+  
     tagSetHFile = path </> "include" </> (optFileName opts) ++ "_meta_set.h"
     tagSetCFile = path </> "src" </> (optFileName opts) ++ "_meta_set.c"
 
@@ -147,7 +157,7 @@ genFiles opts allSymbols policy = let
     logging  = optLogging opts
 
     tagInfo :: TagInfo
-    tagInfo = buildTagInfo symbols
+    tagInfo = buildTagInfo allModSymTables allUsedSyms
 
     targetPath = optTargetDir opts
     
@@ -158,14 +168,14 @@ genFiles opts allSymbols policy = let
     createDirectoryIfMissing True $ path </> "include"
 
     -- tag_set files
-    hPutStrLn stderr $ "Generating: " ++ tagSetCFile
+    hPutStrLn stderr $ "\nGenerating: " ++ tagSetCFile
     writeMetaSetCFile tagSetCFile
     hPutStrLn stderr $ "Generating: " ++ tagSetHFile
     writeMetaSetHFile tagSetHFile tagInfo
 
       -- policy_rule files
     hPutStrLn stderr $ "Generating: " ++ ruleCFile
-    writeRuleCFile ruleCFile debug profile logging policy symbols tagInfo
+    writeRuleCFile ruleCFile debug profile logging topMod policy allModSymTables allUsedSyms tagInfo
 
     hPutStrLn stderr $ "Generating: " ++ ruleHFile
     writeRuleHFile ruleHFile debug
@@ -183,11 +193,16 @@ genFiles opts allSymbols policy = let
     hPutStrLn stderr $ "Generating: " ++ metaYFile
     writeMetaYFile metaYFile tagInfo
     hPutStrLn stderr $ "Generating: " ++ modYFile
-    writeModYFile modYFile symbols
+    writeModYFile modYFile allModSymTables
     hPutStrLn stderr $ "Generating: " ++ groupsYFile
-    writeGroupYFile groupsYFile symbols
+    writeGroupYFile groupsYFile allModSymTables allUsedSyms
     hPutStrLn stderr $ "Generating: " ++ initYFile
-    writeInitYFile initYFile symbols 
+    writeInitYFile initYFile allModSymTables allUsedSyms
     hPutStrLn stderr $ "Generating: " ++ entityYFile
     writeEntityYFile entityYFile targetPath
 
+
+dump stuff = do
+  hPutStrLn stderr "\nHere's some stuff:: " 
+  hPutStrLn stderr $ unlines $ map show stuff
+        

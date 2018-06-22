@@ -1,6 +1,11 @@
 flags: {}
+
 packages:
 - .
+
 extra-deps:
 - megaparsec-5.3.1
+
+ghc-options:
+
 resolver: lts-9.21

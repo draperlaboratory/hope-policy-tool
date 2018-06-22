@@ -92,6 +92,9 @@ hasErrors = not . null
 getErrors :: forall a b. [Either a b] -> [a]
 getErrors = lefts
 
+nubSort :: forall a. (Eq a, Ord a) => [a] -> [a]
+nubSort = nub.sort
+
 nubWith :: forall a a1. Eq a1 => (a -> a1) -> [a] -> [a]
 nubWith fn = nubBy (\a b -> fn a == fn b)
 
@@ -104,6 +107,9 @@ groupWith fn = groupBy (\a b -> fn a == fn b)
 byGroup :: forall t. QName t -> Bool
 byGroup (QGroup _) = True
 byGroup _ = False
+
+qualifyQSym :: ModName -> QSym -> QSym
+qualifyQSym mn qs = fmap (mn++) qs
 
 qualifiers :: forall a. [a] -> [a]
 qualifiers = init

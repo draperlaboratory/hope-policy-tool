@@ -37,9 +37,10 @@ import Data.Either
 import AST
 import PolicyModules
 import Generator
+import Symbols
 import Validate
-
-
+import CommonFn
+import ErrorMsg
 
 options :: [ OptDescr (Options -> IO Options) ]
 options =
@@ -122,24 +123,51 @@ checkErrs opts topPolicyName = map snd $ filter isError optFldErrs
     isError (f,e) = f opts == ""
 
 processMods :: Options -> [String] -> IO()
+processMods opts [] = do
+  hPutStrLn stderr "\nError no policy specified"
 processMods opts topPolicyName = do
-    modules <- getAllModules opts topPolicyName
-    
-    case validateModules modules of
+    parsedMods <- getAllModules opts topPolicyName
+    case parsedMods of
           Left errs -> do
-            hPutStrLn stderr "\nError during module validation (validateModules)."
+            hPutStrLn stderr "\nError during module loading."
             hPutStrLn stderr $ unlines $ errs
-          Right symbols -> do
-            when (optIR opts) $ genSymbolsFile symbols
-            case validateMain topPolicyName symbols of
-                  Right mainPolicy ->
-                    let ePolicy = elabPolicy symbols mainPolicy in do
-                      when (optIR opts) $ genASTFile $ ePolicy 
-                      genFiles opts symbols mainPolicy 
-                      hPutStrLn stderr "\nPolicy implementation generated successfully.\n"
-                  Left errs -> do
-                    hPutStrLn stderr "\nError in main policy."
-                    hPutStrLn stderr $ unlines $ errs
+            exitFailure
+          Right modules -> case buildSymbolTables modules of
+                             Left errs -> do
+                               hPutStrLn stderr "\nError building Symbol Tables."
+                               hPutStrLn stderr $ unlines $ errs
+                               exitFailure
+                             Right symbols -> do
+                               hPutStrLn stdout "\nBuilt Symbol Tables."
+                               when (optIR opts) $ genSymbolsFile symbols
+                               case locateMain topPolicyName symbols of
+                                 Right (mainModule, mainPolicyDecl) -> do
+                                   hPutStrLn stdout "Located main policy."
+                                   case validateMain symbols mainModule mainPolicyDecl of
+                                     Right uniqueSyms -> do
+                                       hPutStrLn stdout "Validated main policy.\n"
+                                       when (optIR opts) $ genASTFile $ Just mainPolicyDecl
+                                       case validateModuleRequires symbols (uniqueMods uniqueSyms) of
+                                         Right uniqueReqs -> do
+                                           hPutStrLn stdout "Validated requires.\n"
+                                           genFiles opts symbols uniqueSyms uniqueReqs mainModule $ Just mainPolicyDecl
+                                           hPutStrLn stderr "\nPolicy implementation generated successfully.\n"
+                                           exitSuccess
+                                         Left errs -> do
+                                           hPutStrLn stderr "\nError Unable to validate requires: " 
+                                           hPutStrLn stderr $ unlines $ errs
+                                           exitFailure                                         
+                                     Left errs -> do
+                                       hPutStrLn stderr "\nError Unable to validate main policy: " 
+                                       hPutStrLn stderr $ unlines $ errs
+                                       exitFailure
+                                 Left errs -> do
+                                   hPutStrLn stderr "\nError Unable to locate main policy: " 
+                                   hPutStrLn stderr $ unlines $ errs
+                                   exitFailure
+      where
+        uniqueMods :: [(ModName, QSym)] -> [ModName]
+        uniqueMods = nubSort . fst . unzip
 
 reportErrors :: String -> [Either ErrMsg (ModuleDecl QSym)] -> IO ()
 reportErrors msg ms = do

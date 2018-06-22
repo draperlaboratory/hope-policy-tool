@@ -43,22 +43,23 @@ import CommonFn
 --      .h header
 writeGroupYFile
   :: FilePath
-     -> ModSymbols
-     -> IO ()
-writeGroupYFile yFile symbols = encodeFile yFile $ object [ "Groups"     .= groups]
+  -> ModSymbols
+  -> UsedSymbols
+  -> IO ()
+writeGroupYFile yFile ms us = encodeFile yFile $ object [ "Groups"     .= groups]
   where
-    groups = object $ map (uncurry (.=)) $ e
-    e = concatMap merge f
+    groups = object $ map (uncurry (.=)) $ combineInst
+    combineInst = concatMap merge groupByInstruction
     merge :: [(Text, String)] -> [(Text, [String])]
     merge [] = []
     merge ls = let (is, as) = unzip ls in [(head is, nub $ sort as)]
-    f :: [[(Text, String)]]
-    f = groupWith fst $ sortWith fst $ h $ g $ symbols
-    g :: ModSymbols -> [GroupDecl [ISA] QSym]
-    g = map snd . concatMap (groupSyms.snd)
-    h :: [GroupDecl [ISA] QSym] -> [(Text, String)]
-    h = concatMap j
-    j :: GroupDecl [ISA] QSym -> [(Text, String)]
-    j (GroupDecl _ qs _ _ insts) = zip (map asm insts) (repeat $ qualSymStr $ groupPrefix qs)
+    groupByInstruction :: [[(Text, String)]]
+    groupByInstruction = groupWith fst $ sortWith fst $ flatten $ groupList
+    groupList :: [(ModName, GroupDecl [ISA] QSym)]
+    groupList = map (groupDecl ms) $ usedGroups us
+    flatten :: [(ModName, GroupDecl [ISA] QSym)] -> [(Text, String)]
+    flatten = concatMap instGroups
+    instGroups :: (ModName, GroupDecl [ISA] QSym) -> [(Text, String)]
+    instGroups (mn, GroupDecl _ qs _ _ insts) = zip (map asm insts) (repeat $ qualSymStr $ qualifyQSym (moduleForQSym ms mn qs) $ groupPrefix qs)
     asm :: ISA -> Text
     asm (Asm _ i _) = pack i

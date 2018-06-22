@@ -27,6 +27,9 @@
 module ErrorMsg where
 
 import Data.Either
+import Debug.Trace
+
+type ErrMsg = String
 
 -- case where we are sure this cant happen
 unexpectedError :: t
@@ -41,4 +44,7 @@ eitherErrs es = case lefts es of
   [] -> Right (rights es)
   ls -> Left ls
 
-  
+mayErr :: String -> Either ErrMsg a -> a
+mayErr msg e = case e of
+                 Left err | traceStack "" True -> error $ "Error: " ++ err ++ ", " ++ msg
+                 Right a -> a
