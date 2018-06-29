@@ -5,7 +5,7 @@
 ISP_PREFIX ?= /opt/isp/
 
 all:
-	stack build
+	stack build --allow-different-user
 
 install:
 	stack install --local-bin-path=$(ISP_PREFIX)/bin/
