@@ -1,0 +1,20 @@
+#!/bin/bash
+
+apt-get update
+
+apt-get install -y \
+        wget
+
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+pushd $SCRIPT_DIR > /dev/null
+
+rm -rf ./stack.html
+wget -O ./stack.html https://get.haskellstack.org/
+
+sha512sum -c <<< "d9c041a79cb9d94c80b6766151715790ddda0ac1512801529b81ec129d224d79753444cb67c27022179d16a0f4eba6af832927a2e31f77ae7e446b3b25ab33a0  stack.html"
+
+bash stack.html -f
+rm -rf ./stack.html
