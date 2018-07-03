@@ -43,9 +43,10 @@ import CommonFn
 --      .h header
 writeInitYFile
   :: FilePath
-     -> ModSymbols
-     -> IO ()
-writeInitYFile yFile symbols = encodeFile yFile $ reqsYml $ map pathify $ initSetFns symbols
+  -> ModSymbols
+  -> UsedSymbols
+  -> IO ()
+writeInitYFile yFile ms us = encodeFile yFile $ reqsYml $ map pathify $ initSetFns ms us
   where
     pathify :: ([String], [Tag QSym]) -> ([Text], [Tag QSym])
     pathify (p, t) = (map pack p, t)
@@ -69,26 +70,21 @@ mkTagVal (Tag _ qSym fields) = object [ "name"     .= (qualSymStr qSym)
                                       , "fields"   .= (map mkField fields)
                                    ]
 
-initSetFns :: [(ModName, SymbolTable QSym)] -> [([String], [Tag QSym])]
-initSetFns symbols = map unique $ map combine everyTag
+initSetFns :: ModSymbols -> UsedSymbols -> [([String], [Tag QSym])]
+initSetFns ms us = map unique $ map combine everyTag
   where
     -- group together common Fn defs
     everyTag = groupWith fst $ sortWith fst $ policyInitFns
     -- extract Requires from all modules
-    policyInitFns = concatMap (reqFn.snd) $ allRequires symbols
+    policyInitFns = concatMap reqFn $ usedRequires ms us
     -- convert a requirement into a Fn spec
-    reqFn (Init _ rqn is)   = [mkPolicyFn (setTags is) rqn]
+    reqFn (mn, Init _ rqn is)   = [mkPolicyFn (setTags $ fmap (resolveQSym ms mn) is) rqn]
     mkPolicyFn tags rqn = (rqn, tags)
     mkSystemFn (rqn, _) = (rqn, [])
     -- helpers to merge common Fn defs for each unique entity
     unique (n, ts) = (n, nubWith qsym $ sortWith qsym ts)
     combine = foldr merge ([],[])
     merge (n, ts) (_, ts2) = (n, ts2 ++ ts)
-
-allRequires :: [(ModName, SymbolTable n)] -> [(ModName, RequireDecl n)]
-allRequires = concatMap modReqs
-  where
-    modReqs (mn, ins) = zip (repeat mn) (requires ins)
 
 
 {-

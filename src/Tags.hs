@@ -24,7 +24,7 @@
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
 {-# LANGUAGE RankNTypes, NamedFieldPuns #-}
-module Tags (setTags,buildTagInfo,usedModules,TagInfo(..)) where
+module Tags (setTags,buildTagInfo,TagInfo(..)) where
 
 -- -- import CommonTypes
 import CommonFn
@@ -34,6 +34,8 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Word
 import Data.List (sort,foldl')
+import Data.Maybe
+
 
 -- This struct collects a bunch of info about the tags used by the current
 -- policy (and its imports).  It is meant to be computed once and passed around.
@@ -71,27 +73,25 @@ data TagInfo =
           }
   deriving (Show)
 
-usedModules :: ModSymbols -> Maybe (PolicyDecl QSym) -> S.Set ModName
-usedModules _ Nothing = S.empty
-usedModules ms (Just pd) = policyDeclModules ms pd
+{-
+usedModules :: ModSymbols -> ModName -> Maybe (PolicyDecl QSym) -> S.Set ModName
+usedModules _ _ Nothing = S.empty
+usedModules ms topMod(Just pd) = policyDeclModules ms topMod pd
 
-policyDeclModules :: ModSymbols -> PolicyDecl QSym -> S.Set ModName
-policyDeclModules ms (PolicyDecl _ _ qs pe) =
-  S.insert (modName qs) $ policyExModules ms pe
+policyDeclModules :: ModSymbols -> ModName -> PolicyDecl QSym -> S.Set ModName
+policyDeclModules ms modN (PolicyDecl _ _ qs pe) =
+  S.insert modN $ policyExModules ms modN pe
 
-policyExModules :: ModSymbols -> PolicyEx QSym -> S.Set ModName
-policyExModules ms (PEVar _ v) =
-  case lookupPolicy ms v of
-    Nothing -> error $ "Unknown policy name " ++ show v
-    Just p -> policyDeclModules ms p
-policyExModules ms (PECompExclusive _ pe1 pe2) =
-  S.union (policyExModules ms pe1) (policyExModules ms pe2)
-policyExModules ms (PECompPriority _ pe1 pe2) =
-  S.union (policyExModules ms pe1) (policyExModules ms pe2)
-policyExModules ms (PECompModule _ pe1 pe2) =
-  S.union (policyExModules ms pe1) (policyExModules ms pe2)
-policyExModules _ (PERule _ (RuleClause _ og _ _ )) =
-  S.singleton (modName og)
+policyExModules :: ModSymbols -> ModName -> PolicyEx QSym -> S.Set ModName
+policyExModules ms modN (PEVar _ v) = let (modN', p) = getPolicy ms modN v in  policyDeclModules ms modN' p
+policyExModules ms modN (PECompExclusive _ pe1 pe2) =
+  S.union (policyExModules ms modN pe1) (policyExModules ms modN pe2)
+policyExModules ms modN (PECompPriority _ pe1 pe2) =
+  S.union (policyExModules ms modN pe1) (policyExModules ms modN pe2)
+policyExModules ms modN (PECompModule _ pe1 pe2) =
+  S.union (policyExModules ms modN pe1) (policyExModules ms modN pe2)
+policyExModules ms modN (PERule _ (RuleClause _ og _ _ )) = let (modN', p) = getPolicy ms modN og in S.singleton modN'
+-}
 
 setTags :: InitSet t -> [Tag t]
 setTags (ISExact _ ts) = ts
@@ -99,37 +99,42 @@ setTags (ISExact _ ts) = ts
 -- This constructs the tag info.  It assumes the ModSymbols it is passed
 -- contains only the relevant modules.  Any tags in the modules it is passed
 -- will appear in the generated code.
-buildTagInfo :: ModSymbols -> TagInfo
-buildTagInfo ms = 
+
+buildTagInfo :: ModSymbols -> [(ModName, QSym)] -> TagInfo
+buildTagInfo ms allSyms = 
   TagInfo {tiMaxTag,
            tiNumBitFields,
            tiNumDataArgs,
            tiArrayLength = tiNumBitFields + tiNumDataArgs,
-
-           tiTagNames = map qsym declaredTags,
-           tiGroupNames = map qsym ogFakeTagDecls,
-           tiTagBitPositions = M.fromList $ zip (map qsym declaredTags)
+           tiTagNames = map tagName declaredTags,
+           tiGroupNames = map tagName ogFakeTagDecls,
+           tiTagBitPositions = M.fromList $ zip (map tagName declaredTags)
                                                 [minTagNumber..],
            tiTagArgInfo = dataArgInfo}
   where
+    tagName (mn, td) = qualifyQSym mn $ qsym td
     tiMaxTag,tiNumBitFields,tiNumDataArgs :: Word32
     tiMaxTag = minTagNumber + (fromIntegral $ length declaredTags) - 1
     tiNumBitFields = 1 + (div tiMaxTag 32)
     tiNumDataArgs = fromIntegral $ length $
-       concatMap (\(TagDecl _ _ args) -> args) declaredTags
+       concatMap (\(_, TagDecl _ _ args) -> args) declaredTags
     
     -- This is all the tags that are explicitly declared in modules that this
     -- policy uses bits from, plus fake declarations for the opgroups, since
     -- they are really tags.
-    declaredTags :: [TagDecl QSym]
+    declaredTags :: [(ModName, TagDecl QSym)]
     declaredTags = sort $ actualDecls ++ ogFakeTagDecls
       where
-        actualDecls :: [TagDecl QSym]
-        actualDecls = map snd $ concatMap (tagSyms . snd) ms
+        actualDecls :: [(ModName, TagDecl QSym)]
+        actualDecls = map (tagDecl ms) $ usedTags  allSyms
 
-    ogFakeTagDecls :: [TagDecl QSym]
-    ogFakeTagDecls = map (makeOGDecl . snd) $ concatMap (groupSyms . snd) ms
+    ogFakeTagDecls :: [(ModName, TagDecl QSym)]
+    ogFakeTagDecls = mapMaybe grpDecls allSyms
       where
+        grpDecls :: (ModName, QSym) -> Maybe (ModName, TagDecl QSym)
+        grpDecls (mn, qg@(QGroup _)) = let (mn', gd) = getGroup ms mn qg in Just (mn', makeOGDecl gd)
+        grpDecls _ = Nothing
+
         makeOGDecl :: GroupDecl a QSym -> TagDecl QSym
         makeOGDecl (GroupDecl sp nm _ _ _) = TagDecl sp (groupPrefix nm) []
         
@@ -138,21 +143,17 @@ buildTagInfo ms =
 --      mapMaybe (\tdcl -> if S.member (qsym tdcl) usedTags then Just tdcl else Nothing)
 --               declaredTags
 
-    findTypeDef :: QSym -> TypeDecl QSym
-    findTypeDef qs =
-      case lookupType ms qs of
-        Nothing -> error $ "Encountered unknown type name " ++ tagName qs
-                        ++ " while building TagInfo data structure."
-        Just td -> td
+    findTypeDef :: ModName -> QSym -> TypeDecl QSym
+    findTypeDef modN qs = let (_, td) = getType ms modN qs in td
 
     dataArgInfo :: M.Map QSym [(Word32,TypeDecl QSym)]
     dataArgInfo = fst $ foldl' folder (M.empty,tiNumBitFields) declaredTags
       where
         folder :: (M.Map QSym [(Word32,TypeDecl QSym)], Word32)
-               -> TagDecl QSym
+               -> (ModName, TagDecl QSym)
                -> (M.Map QSym [(Word32,TypeDecl QSym)], Word32)
-        folder (accMap,nextPos) (TagDecl _ nm typs) =
-          (M.insert nm (zip [nextPos..] (map findTypeDef typs)) accMap,
+        folder (accMap,nextPos) (modN, TagDecl _ nm typs) =
+          (M.insert (qualifyQSym modN nm) (zip [nextPos..] (map (findTypeDef modN) typs)) accMap,
            (fromIntegral $ length typs) + nextPos)
         
 minTagNumber :: Word32

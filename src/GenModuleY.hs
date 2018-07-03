@@ -23,28 +23,29 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-{-# LANGUAGE RankNTypes #-}
-module ErrorMsg where
+{-# LANGUAGE OverloadedStrings #-}
+module GenModuleY where
 
-import Data.Either
-import Debug.Trace
+import Data.List
+import Data.Yaml
 
-type ErrMsg = String
+import Data.Text (Text, pack)
 
--- case where we are sure this cant happen
-unexpectedError :: t
-unexpectedError = codingError  "Unexpected error"
+import AST
+import Symbols
+import CommonFn
 
--- Error function for internal errors, things that shouldn't happen
-codingError :: String -> t
-codingError msg = error $ "Internal policytool error: " ++ msg
 
-eitherErrs :: [Either a b] -> Either [a] [b]
-eitherErrs es = case lefts es of
-  [] -> Right (rights es)
-  ls -> Left ls
+-- --------------------------------------------------------------------------------------
 
-mayErr :: String -> Either ErrMsg a -> a
-mayErr msg e = case e of
-                 Left err | traceStack "" True -> error $ "Error: " ++ err ++ ", " ++ msg
-                 Right a -> a
+--      .h header
+writeModYFile
+  :: FilePath
+     -> ModSymbols
+     -> IO ()
+writeModYFile yFile symbols = encodeFile yFile $ object [ "Modules"     .= mods]
+  where
+    mods :: [Value]
+    mods = map (\m->object ["name" .= m]) ms
+    ms :: [String]
+    ms = map (dotName.fst) symbols

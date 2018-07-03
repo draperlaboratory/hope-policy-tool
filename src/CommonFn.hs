@@ -92,6 +92,9 @@ hasErrors = not . null
 getErrors :: forall a b. [Either a b] -> [a]
 getErrors = lefts
 
+nubSort :: forall a. (Eq a, Ord a) => [a] -> [a]
+nubSort = nub.sort
+
 nubWith :: forall a a1. Eq a1 => (a -> a1) -> [a] -> [a]
 nubWith fn = nubBy (\a b -> fn a == fn b)
 
@@ -104,6 +107,9 @@ groupWith fn = groupBy (\a b -> fn a == fn b)
 byGroup :: forall t. QName t -> Bool
 byGroup (QGroup _) = True
 byGroup _ = False
+
+qualifyQSym :: ModName -> QSym -> QSym
+qualifyQSym mn qs = fmap (mn++) qs
 
 qualifiers :: forall a. [a] -> [a]
 qualifiers = init
@@ -124,7 +130,7 @@ parseDashName = words . map toWords
     toWords c = c
 
 typeName :: QSym -> String
-typeName = map toLower . intercalate "_" . qName
+typeName = reqName . map toLower . intercalate "_" . qName
 
 tagName :: QSym -> String
 tagName = reqName . intercalate "_" . qName
@@ -255,6 +261,9 @@ camelToUnder :: [Char] -> [Char]
 camelToUnder [] = []
 camelToUnder (c:cs) | isUpper c = '_':(toLower c):(camelToUnder cs)
 camelToUnder (c:cs) = c:(camelToUnder cs)
+
+qualifiedShowRule :: PolicyDecl QSym -> RuleClause QSym -> String
+qualifiedShowRule p rc = policyDotName p ++ ":" ++ compactShowRule rc
 
 -- Compact rule pattern display for debugging
 compactShowRule :: RuleClause QSym -> String
