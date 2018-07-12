@@ -23,28 +23,25 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-{-# LANGUAGE RankNTypes #-}
-module ErrorMsg where
+{-# LANGUAGE OverloadedStrings #-}
+module GenEntityY where
 
-import Data.Either
-import Debug.Trace
+import System.FilePath
 
-type ErrMsg = String
+-- --------------------------------------------------------------------------------------
 
--- case where we are sure this cant happen
-unexpectedError :: t
-unexpectedError = codingError  "Unexpected error"
+--      .h header
+writeEntityYFile
+  :: FilePath -> FilePath -> IO ()
+writeEntityYFile yFile targetPath = do
+  ents <- loadEnts targetPath
+  writeFile yFile ents
 
--- Error function for internal errors, things that shouldn't happen
-codingError :: String -> t
-codingError msg = error $ "Internal policytool error: " ++ msg
-
-eitherErrs :: [Either a b] -> Either [a] [b]
-eitherErrs es = case lefts es of
-  [] -> Right (rights es)
-  ls -> Left ls
-
-mayErr :: String -> Either ErrMsg a -> a
-mayErr msg e = case e of
-                 Left err | traceStack "" True -> error $ "Error: " ++ err ++ ", " ++ msg
-                 Right a -> a
+loadEnts targetPath = do
+  soc <- readFile socFile
+  isa <- readFile isaFile
+  return $ soc ++ isa
+  where
+    socFile = targetPath </> "SOC" </> "miv_ents.yml"
+    isaFile = targetPath </> "ISA" </> "riscv.yml"
+    

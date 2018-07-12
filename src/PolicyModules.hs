@@ -42,7 +42,7 @@ import AST
 import Generator
 import CommonFn
 import PolicyParser
-
+import ErrorMsg
 
 
 getAllModules :: Options -> [String] -> IO (Either [ErrMsg] [ModuleDecl QSym])

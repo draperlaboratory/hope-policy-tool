@@ -59,15 +59,17 @@ import qualified Data.Map as M
 --resultsSizeMacro, resultsPCMacro, resultsRDMacro, resultsCSRMacro :: String
 --resultsSizeMacro = "RULE_DEST_COUNT"
 
-policySuccessName, policyIFailName, policyEFailName :: String
+policySuccessName, policyIFailName, policyEFailName, policyErrorName :: String
 policySuccessName = "policySuccess"
 policyIFailName   = "policyImpFailure"
 policyEFailName   = "policyExpFailure"
+policyErrorName   = "policyErrorFailure"
 
-policySuccessVal, policyIFailVal, policyEFailVal :: Int
+policySuccessVal, policyIFailVal, policyEFailVal, policyErrorVal :: Int
 policySuccessVal = 1
 policyIFailVal   = -1
 policyEFailVal   = 0
+policyErrorVal   = -2
 
 -- --------------------------------------------------------------------------------------
 
@@ -77,16 +79,18 @@ writeRuleCFile
      -> Bool
      -> Bool
      -> Bool
+     -> ModName
      -> Maybe (PolicyDecl QSym)
      -> ModSymbols
+     -> UsedSymbols
      -> TagInfo
      -> IO ()
 
-writeRuleCFile cFile debug profile _logging policy symbols tinfo =
+writeRuleCFile cFile debug profile _logging topMod policy modSyms usedSyms tinfo =
   writeFile cFile $ unlines $                                                  -- Write the impl file, consisting of:
   cHeader debug profile ++ (blank 1) ++
-  [renderC $    policyResultConsts ++ policyTypeHelpers symbols
-             ++ translateTopPolicy debug profile symbols tinfo policy]
+  [renderC $     ruleLogStructure modSyms topMod policy ++ policyResultConsts ++ policyTypeHelpers modSyms usedSyms
+             ++ translateTopPolicy debug profile modSyms usedSyms tinfo topMod policy]
 
   {-
   installRule ++
@@ -94,10 +98,50 @@ writeRuleCFile cFile debug profile _logging policy symbols tinfo =
   cFooter
 -}
 
--- Constant definitions for policy evaluation results
+ruleLogStructure :: ModSymbols -> ModName -> Maybe (PolicyDecl QSym) -> [Definition]
+ruleLogStructure _ _ Nothing = []
+ruleLogStructure ms topMod (Just p) = 
+  [cunit|
+    const int ruleLogMax = $int:(polCount p);
+    char* ruleLog[$int:(polCount p + 1)];
+    int ruleLogIdx = 0;
+
+        void logRuleEval(const char* ruleDescription) {
+          if(ruleLogIdx < ruleLogMax){
+            ruleLog[ruleLogIdx] = ruleDescription;
+            if(ruleLogIdx <= ruleLogMax){
+              ruleLogIdx++;
+            }
+          }
+        }
+        void logRuleInit() {
+          ruleLogIdx = 0;
+          ruleLog[ruleLogMax] = "additional rules omitted...";
+        }
+        const char* nextLogRule(int* idx) {
+          if(*idx < ruleLogIdx)
+            return ruleLog[(*idx)++];
+          return 0;
+        }
+  |]
+    where
+      -- use count of policy names as proxy for the number of possible rule evals
+      -- TODO: perform a more accurate count
+      polCount :: PolicyDecl QSym -> Int
+      polCount (PolicyDecl _ _ _ pex) = 1 + pexCount pex
+      pexCount :: PolicyEx QSym -> Int
+      pexCount (PEVar _ qn) = let (modN, p) = getPolicy ms topMod qn in polCount p
+
+      pexCount (PECompExclusive _ lhs rhs) = pexCount lhs + pexCount rhs
+      pexCount (PECompPriority _ lhs rhs) =  pexCount lhs + pexCount rhs
+      pexCount (PECompModule _ lhs rhs) =  pexCount lhs + pexCount rhs
+      pexCount (PERule _ _) = 0
+
+  -- Constant definitions for policy evaluation results
 policyResultConsts :: [Definition]
 policyResultConsts =
   [cunit|
+    const int $id:policyErrorName = $int:policyErrorVal;
     const int $id:policyEFailName = $int:policyEFailVal;
     const int $id:policyIFailName = $int:policyIFailVal;
     const int $id:policySuccessName = $int:policySuccessVal;
@@ -157,23 +201,24 @@ policyInputArgs =
 -- Currently the only supported type is ints, possibly with a fixed range.  We
 -- define two things for each declared type: The next unused value (as a global)
 -- and a function to get a new one (respecting the defined range).
-policyTypeHelpers :: ModSymbols -> [Definition]
-policyTypeHelpers ms = concatMap typeHelpers $ allTypes ms
+policyTypeHelpers :: ModSymbols -> UsedSymbols -> [Definition]
+policyTypeHelpers ms us = concatMap (typeHelpers.typeDecl ms) $ usedTypes us
   where
-    typeHelpers :: TypeDecl QSym -> [Definition]
-    typeHelpers (TypeDecl _ nm (TDTInt _ mrange)) =
+    typeHelpers :: (ModName, TypeDecl QSym) -> [Definition]
+    typeHelpers (mn, TypeDecl _ nm (TDTInt _ mrange)) =
       [cunit|
         typename uint32_t $id:globalNm = 0;
 
-        typename uint32_t $id:(typeGenFuncName nm)($ty:contextType* $id:contextArgName) {
+        typename uint32_t $id:(typeGenFuncName qualifiedName)($ty:contextType* $id:contextArgName) {
           $id:contextArgName->cached = false;
           typename uint32_t newval = $id:globalNm;
           $id:globalNm = $exp:updateVal;
           return newval;
         }|]
       where
+        qualifiedName = resolveQSym ms mn nm
         globalNm :: String
-        globalNm = typeUsedGlobalName nm
+        globalNm = typeUsedGlobalName qualifiedName
 
         updateVal :: Exp
         updateVal = case mrange of
@@ -206,16 +251,16 @@ data OpGroupNames = OGNames {ognPats :: [(QSym,TagSpec)],
 -- This maps the name of an opgroup to its OpGroupNames structure.
 type OpGroupMap = M.Map QSym OpGroupNames
 
-buildOGMap :: [SymbolTable QSym] -> OpGroupMap
-buildOGMap symbols = foldl' (flip $ uncurry M.insert)
+buildOGMap :: ModSymbols -> UsedSymbols -> OpGroupMap
+buildOGMap ms us = foldl' (flip $ uncurry M.insert)
                             M.empty (map declNames opGroupDecls)
   where
-    opGroupDecls :: [(GroupDecl [ISA] QSym)]
-    opGroupDecls = map snd $ concatMap groupSyms symbols
+    opGroupDecls :: [(ModName, GroupDecl [ISA] QSym)]
+    opGroupDecls = map (groupDecl ms) $ usedGroups us
 
-    declNames :: GroupDecl [ISA] QSym -> (QSym, OpGroupNames)
-    declNames (GroupDecl _ groupNm leftParams rightParams _) =
-      (groupNm,
+    declNames :: (ModName, GroupDecl [ISA] QSym) -> (QSym, OpGroupNames)
+    declNames (mn, GroupDecl _ groupNm leftParams rightParams _) =
+      (qualifyQSym mn groupNm,
        OGNames {ognPats = map paramNames leftParams,
                 ognExps = map paramNames rightParams})
 
@@ -268,20 +313,20 @@ expOperandLookup ogMap og operand    = do
 -- and the local policies, in that order.
 --
 -- This should really return a maybe, instead of erroring
-topPolicyPieces :: ModSymbols -> PolicyEx QSym
-                -> ([PolicyDecl QSym],[PolicyDecl QSym])
-topPolicyPieces ms pEx =
+topPolicyPieces :: ModSymbols -> ModName -> PolicyEx QSym
+                -> ([(ModName, PolicyDecl QSym)],[(ModName,PolicyDecl QSym)])
+topPolicyPieces ms topMod pEx =
   case topPolicyVars pEx of
     Nothing -> error tppError
     Just pr -> pr
   where
     topPolicyVars :: PolicyEx QSym
-                  -> Maybe ([PolicyDecl QSym],[PolicyDecl QSym])
+                  -> Maybe ([(ModName, PolicyDecl QSym)],[(ModName,PolicyDecl QSym)])
     topPolicyVars (PEVar _ x) =
-      case lookupPolicy ms x of
-        Nothing -> Nothing
-        Just p@(PolicyDecl _ PLGlobal _ _) -> Just ([p],[])
-        Just p@(PolicyDecl _ PLLocal _ _)  -> Just ([],[p])
+      case getPolicy ms topMod x of
+        (modN, p@(PolicyDecl _ PLGlobal _ _)) -> Just ([(modN,p)],[])
+        (modN, p@(PolicyDecl _ PLLocal _ _))  -> Just ([],[(modN,p)])
+        _ -> Nothing
     topPolicyVars (PECompPriority _ p1 p2) =
       case (gTop p1,topPolicyVars p2) of
         (Just gp1, Just (gp2,lp2)) -> Just (gp1 ++ gp2,lp2)
@@ -292,24 +337,24 @@ topPolicyPieces ms pEx =
         _ -> Nothing
     topPolicyVars _ = Nothing
 
-    gTop :: PolicyEx QSym -> Maybe [PolicyDecl QSym]
+    gTop :: PolicyEx QSym -> Maybe [(ModName, PolicyDecl QSym)]
     gTop (PEVar _ x) =
-      case lookupPolicy ms x of
-        Nothing -> Nothing
-        Just p@(PolicyDecl _ PLGlobal _ _) -> Just [p]
-        Just (PolicyDecl _ PLLocal _ _) -> Nothing
+      case getPolicy ms topMod x of
+        (modN, p@(PolicyDecl _ PLGlobal _ _)) -> Just [(modN,p)]
+        (modN, (PolicyDecl _ PLLocal _ _)) -> Nothing
+        _ -> Nothing
     gTop (PECompPriority _ p1 p2) =
        case (gTop p1, gTop p2) of
          (Just gp1, Just gp2) -> Just (gp1 ++ gp2)
          _ -> Nothing
     gTop _ = Nothing
 
-    lTop :: PolicyEx QSym -> Maybe [PolicyDecl QSym]
+    lTop :: PolicyEx QSym -> Maybe [(ModName, PolicyDecl QSym)]
     lTop (PEVar _ x) =
-      case lookupPolicy ms x of
-        Nothing -> Nothing
-        Just p@(PolicyDecl _ PLLocal _ _) -> Just [p]
-        Just (PolicyDecl _ PLGlobal _ _) -> Nothing
+      case getPolicy ms topMod x of
+        (modN, p@(PolicyDecl _ PLLocal _ _)) -> Just [(modN,p)]
+        (modN, (PolicyDecl _ PLGlobal _ _)) -> Nothing
+        _ -> Nothing
     lTop (PECompModule _ p1 p2) =
        case (lTop p1, lTop p2) of
          (Just lp1, Just lp2) -> Just (lp1 ++ lp2)
@@ -333,8 +378,13 @@ policyMaskName :: PolicyDecl QSym -> String
 policyMaskName (PolicyDecl _ _ n _) =
   "policy_mask_" ++ (unqualSymStr n)
 
-policyMask :: ModSymbols -> TagInfo -> PolicyDecl QSym -> Definition
-policyMask _ (TagInfo {tiArrayLength}) pd@(PolicyDecl _ PLGlobal _ _) =
+-- The op-group mask is used to "hide" the op group bits in a tag set, which is
+-- sometimes needed when copying tags within a rule
+ogMaskName :: String
+ogMaskName = "og_mask"
+
+policyMask :: ModSymbols -> UsedSymbols -> TagInfo -> (ModName, PolicyDecl QSym) -> Definition
+policyMask _ _ (TagInfo {tiArrayLength}) (mn, pd@(PolicyDecl _ PLGlobal _ _)) =
   [cedecl|const typename uint32_t $id:(policyMaskName pd)[META_SET_WORDS] = $init:initializer;|]
   where
     initializer :: Initializer
@@ -342,7 +392,7 @@ policyMask _ (TagInfo {tiArrayLength}) pd@(PolicyDecl _ PLGlobal _ _) =
 
     allOnes :: (Maybe Designation,Initializer)
     allOnes = (Nothing, ExpInitializer [cexp|0xFFFFFFFF|] noLoc)
-policyMask ms tinfo pd@(PolicyDecl _ PLLocal pnm _) =
+policyMask ms us tinfo (mn, pd@(PolicyDecl _ PLLocal pnm _)) =
   [cedecl|const typename uint32_t $id:(policyMaskName pd)[META_SET_WORDS] = $init:initializer;|]
   where
     initializer :: Initializer
@@ -351,18 +401,34 @@ policyMask ms tinfo pd@(PolicyDecl _ PLLocal pnm _) =
         bi :: Exp -> (Maybe Designation,Initializer)
         bi e = (Nothing,ExpInitializer e noLoc)
 
-    -- We construct fieldMasks from two components: the actual tags
-    -- declared in this module (declaredTags) and also all the
-    -- opgroups, since they count as "relevant" to this policy.
+    -- We construct fieldMasks from the actual tags
+    -- declared in this module (declaredTags)
     fieldMasks :: [Exp]
     fieldMasks = fixedTagSetFields tinfo $
          (map (\(TagDecl _ nm args) ->
                      (nm, replicate (length args) [cexp|0xFFFFFFFF|]))
-              declaredTags)
-      ++ (map (,[]) $ tiGroupNames tinfo)
-    
+              qualifiedTags)
+
+    qualifiedTags :: [TagDecl QSym]
+    qualifiedTags = map (fmap (resolveQSym ms mn)) declaredTags
+
     declaredTags :: [TagDecl QSym]
-    declaredTags = moduleTags ms $ modName pnm
+    declaredTags = moduleTags ms us mn
+
+    -- We construct fieldMasks from
+    -- opgroups, since they count as "relevant" to this policy.
+ogMasks :: TagInfo -> [Definition]
+ogMasks tinfo =  [cedecl|const typename uint32_t $id:(ogMaskName)[META_SET_WORDS] = $init:initializer;|]:[]
+  where
+    initializer :: Initializer
+    initializer = CompoundInitializer (map bi ogMask) noLoc
+      where
+        bi :: Exp -> (Maybe Designation,Initializer)
+        bi e = (Nothing,ExpInitializer e noLoc)
+        ogMask :: [Exp]
+        ogMask = fixedTagSetFields tinfo (map (,[]) $ tiGroupNames tinfo)
+    
+
 
 
 -- Given a collection of tags, this computes the corresponding tag set array, as
@@ -439,15 +505,15 @@ fixedTagSetFields (TagInfo {tiTagBitPositions,tiTagArgInfo,tiArrayLength}) tags 
 -- The eval_policy functions do not check if the computed tag sets
 -- already exist or do any canonization - that is the responsibility of the
 -- caller.
-translateTopPolicy :: Bool -> Bool -> ModSymbols -> TagInfo
+translateTopPolicy :: Bool -> Bool -> ModSymbols -> UsedSymbols -> TagInfo -> ModName
                    -> Maybe (PolicyDecl QSym) -> [Definition]
-translateTopPolicy _debug _profile _ms _ Nothing =
+translateTopPolicy _debug _profile _ms _us _ _ Nothing =
    [ [cedecl|
         int eval_policy ($params:policyInputParams) {
           return $id:policySuccessName;
         }|] ]
-translateTopPolicy debug profile ms tinfo (Just (PolicyDecl _ _ _ p)) =
-  policyMasks ++ evalHelpers ++ 
+translateTopPolicy debug profile ms us tinfo topMod (Just (PolicyDecl _ _ _ p)) =
+  ogMasks tinfo ++ policyMasks ++ evalHelpers ++ 
     [ [cedecl|
         int eval_policy ($params:policyInputParams) {
           int $id:resultVar = $id:policyIFailName;
@@ -461,17 +527,17 @@ translateTopPolicy debug profile ms tinfo (Just (PolicyDecl _ _ _ p)) =
           return $id:policySuccessName;
         }|] ]
   where
-    globalPolicies, localPolicies :: [PolicyDecl QSym]
-    (globalPolicies,localPolicies) = topPolicyPieces ms p
+    globalPolicies, localPolicies :: [(ModName, PolicyDecl QSym)]
+    (globalPolicies,localPolicies) = topPolicyPieces ms topMod p
 
     policyMasks :: [Definition]
-    policyMasks = map (policyMask ms tinfo) (globalPolicies ++ localPolicies)
+    policyMasks = map (policyMask ms us tinfo) (globalPolicies ++ localPolicies)
 
     resultVar :: String
     resultVar = "evalResult"
 
     ogMap :: OpGroupMap
-    ogMap = buildOGMap $ map snd ms
+    ogMap = buildOGMap ms us
 
     evalHelpers :: [Definition]
     evalHelpers =
@@ -496,8 +562,8 @@ translateTopPolicy debug profile ms tinfo (Just (PolicyDecl _ _ _ p)) =
     globalChecks :: [Stm]
     globalChecks = concatMap globalCheck globalPolicies
       where
-        globalCheck :: PolicyDecl QSym -> [Stm]
-        globalCheck pol = [cstms|
+        globalCheck :: (ModName, PolicyDecl QSym) -> [Stm]
+        globalCheck (mn, pol) = [cstms|
           $stms:(policyDebugStmsPre pol);
           $id:resultVar = $id:(singlePolicyEvalName pol)($args:policyInputArgs);
           $stms:(policyDebugStmsPost pol);
@@ -512,8 +578,8 @@ translateTopPolicy debug profile ms tinfo (Just (PolicyDecl _ _ _ p)) =
     localChecks :: [Stm]
     localChecks = concatMap localCheck localPolicies
       where
-        localCheck :: PolicyDecl QSym -> [Stm]
-        localCheck pol = [cstms|
+        localCheck :: (ModName, PolicyDecl QSym) -> [Stm]
+        localCheck (mn, pol) = [cstms|
           $stms:(policyDebugStmsPre pol);
           $id:resultVar = $id:(singlePolicyEvalName pol)($args:policyInputArgs);
           $stms:(policyDebugStmsPost pol);
@@ -572,9 +638,9 @@ singlePolicyEvalName (PolicyDecl _ _ n _) =
 -- affect this policy and won't be modified.  If it's a global policy, the
 -- sets might be completely reworked.
 policyEval :: Bool -> Bool -> ModSymbols -> OpGroupMap
-           -> TagInfo -> PolicyDecl QSym
+           -> TagInfo -> (ModName, PolicyDecl QSym)
            -> Definition
-policyEval debug _profile ms ogMap tagInfo pd@(PolicyDecl _ _ _ pEx) =
+policyEval debug _profile ms ogMap tagInfo (modN, pd@(PolicyDecl _ _ _ pEx)) =
   [cedecl|
        int $id:(singlePolicyEvalName pd) ($params:policyInputParams) {
          int $id:resultVar = $id:policyIFailName;
@@ -591,15 +657,16 @@ policyEval debug _profile ms ogMap tagInfo pd@(PolicyDecl _ _ _ pEx) =
    body :: Stm
    body = Block p' noLoc
      where
-       p' = translatePolicy debug ms ogMap (policyMaskName pd) tagInfo resultVar pEx
+       p' = translatePolicy debug ms ogMap pd tagInfo resultVar modN pEx
 
 -- Takes as arguments:
 --  - whether to print debug info
 --  - The global symbol table
 --  - Info about opgroups
---  - the name of this policy's mask
+--  - the policy declaration (used for policy name)
 --  - the tag encoding list
 --  - a variable name x where the result should be stored
+--  - The enclosing module name
 --  - the policy itself.
 --
 -- Results: A [BlockItem].  This is a list of statements that implements the
@@ -607,31 +674,30 @@ policyEval debug _profile ms ogMap tagInfo pd@(PolicyDecl _ _ _ pEx) =
 -- statements will set x to one of policySuccessName, policyIFailName, or
 -- policyEFailName.  In the first case, the function will add the appropriate
 -- tags from this policy to the array of result tag lists.
-translatePolicy :: Bool -> ModSymbols -> OpGroupMap -> String
-                -> TagInfo -> String
+translatePolicy :: Bool -> ModSymbols -> OpGroupMap ->  PolicyDecl QSym
+                -> TagInfo -> String -> ModName
                 -> PolicyEx QSym -> [BlockItem]
-translatePolicy dbg ms ogMap mask tagInfo pass (PEVar _ x) =
-  case lookupPolicy ms x of
-    Nothing -> error $ "Unknown policy name " ++ show x
-    Just (PolicyDecl _ _ _ p) -> translatePolicy dbg ms ogMap mask tagInfo pass p
-translatePolicy dbg ms ogMap mask tagInfo pass (PECompExclusive _ p1 p2) =
+translatePolicy dbg ms ogMap pd tagInfo pass modN (PEVar _ x) = let (modN, (PolicyDecl _ _ _ p)) = getPolicy ms modN x in
+  translatePolicy dbg ms ogMap pd tagInfo pass modN p
+translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompExclusive _ p1 p2) =
   [citems|$items:p1';
           if ($id:pass == $id:policyIFailName) {
             $items:p2'
           }|]
   where
-     p1' = translatePolicy dbg ms ogMap mask tagInfo pass p1
-     p2' = translatePolicy dbg ms ogMap mask tagInfo pass p2
-translatePolicy dbg ms ogMap mask tagInfo pass (PECompPriority l p1 p2) =
-  translatePolicy dbg ms ogMap mask tagInfo pass (PECompExclusive l p1 p2)
-translatePolicy _ _ _ _ _ _ (PECompModule _ _p1 _p2) =
+     p1' = translatePolicy dbg ms ogMap pd tagInfo pass modN p1
+     p2' = translatePolicy dbg ms ogMap pd tagInfo pass modN p2
+translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompPriority l p1 p2) =
+  translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompExclusive l p1 p2)
+translatePolicy _ _ _ _ _ _ _ (PECompModule _ _p1 _p2) =
   error "Unsupported: PECompModule in translatePolicy"
-translatePolicy dbg _ ogMap mask tagInfo pass (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
+translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
   [citems|
-       if(ms_contains($id:ciArgName,$id:(tagName (groupPrefix ogrp)))) {
+       if(ms_contains($id:ciArgName,$id:(tagName (qualifiedOpGrpMacro)))) {
          $id:pass = $exp:patExp;
          if ($id:pass) {
            $stms:debugPrints
+           $stms:ruleEvalLog
            $items:ruleResult
          } else {
            $id:pass = $id:policyIFailName;
@@ -639,18 +705,23 @@ translatePolicy dbg _ ogMap mask tagInfo pass (PERule _ rc@(RuleClause _ ogrp rp
        }
    |]
   where
+    qualifiedOpGrp :: QSym
+    qualifiedOpGrp = resolveQSym ms modN ogrp 
+    qualifiedOpGrpMacro :: QSym
+    qualifiedOpGrpMacro = qualifyQSym (moduleForQSym ms modN ogrp) $ groupPrefix ogrp
+    mask = policyMaskName pd
     patExp :: Exp
     boundNames :: [(QSym,Exp)]
-    (patExp,boundNames) = translatePatterns mask tagInfo oprLookup rpat
+    (patExp,boundNames) = translatePatterns ms modN mask tagInfo oprLookup rpat
       where
         oprLookup :: QSym -> Maybe String
-        oprLookup = patOperandLookup ogMap ogrp
+        oprLookup = patOperandLookup ogMap qualifiedOpGrp
 
     ruleResult :: [BlockItem]
-    ruleResult = translateRuleResult mask oprLookup boundNames tagInfo rres
+    ruleResult = translateRuleResult ms modN mask oprLookup boundNames tagInfo pass rres
       where
         oprLookup :: QSym -> Maybe String
-        oprLookup = expOperandLookup ogMap ogrp
+        oprLookup = expOperandLookup ogMap qualifiedOpGrp
 
     debugPrints :: [Stm]
     debugPrints =
@@ -659,6 +730,11 @@ translatePolicy dbg _ ogMap mask tagInfo pass (PERule _ rc@(RuleClause _ ogrp rp
           debug_msg($id:contextArgName, $string:("rule match: " ++ (compactShowRule rc) ++ "\n"));
         |]
       else []
+    ruleEvalLog :: [Stm]
+    ruleEvalLog =
+        [cstms|
+          logRuleEval($string:(qualifiedShowRule pd rc));
+        |]
 
 -- Args:
 --   - The policy mask
@@ -672,18 +748,21 @@ translatePolicy dbg _ ogMap mask tagInfo pass (PERule _ rc@(RuleClause _ ogrp rp
 --
 -- XXX This function has become a bit crufty as features have been added, and
 -- could do with a re-write.
-translatePatterns :: String
+translatePatterns :: ModSymbols
+                  -> ModName
+                  -> String
                   -> TagInfo
                   -> (QSym -> Maybe String)
                   -> [BoundGroupPat QSym]
                   -> (Exp,[(QSym,Exp)])
-translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],defaultEnv) pats
+translatePatterns ms mn mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],defaultEnv) pats
   where
     -- default binding for the env var, syntax sugar to allow it to be used in result
     -- without having been defined
     defaultEnv :: [(QSym,Exp)]
     defaultEnv = [(QVar ["env"],[cexp|$id:pcArgName|])]
     patternAcc :: (Exp,[(QSym,Exp)]) -> BoundGroupPat QSym
+    
                -> (Exp,[(QSym,Exp)])
     patternAcc (e,ids) pat =
       foldl' addBindings ([cexp|$exp:e' && $exp:e|],ids) ids'
@@ -711,8 +790,8 @@ translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],default
       case ogmap tsID of
         Nothing -> error $ "No opgroup binding for operand " ++ show tsID
                         ++ " at " ++ show loc
-        Just tsName -> translateTSPat tsID tsName pat
-
+        Just tsName -> translateTSPat tsID tsName (fmap (resolveQSym ms mn) pat)
+        
     -- Give this the name of a pointer to a meta_set_t, and a TagSetPattern, and
     -- it will return (a) an expression that is true iff the pattern matches,
     -- and (b) a list of names that the pattern binds to the input tag set.
@@ -798,26 +877,28 @@ translatePatterns mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],default
 --   - The name of the policy mask
 --   - A function that associates operands to C macros based on the opgroup.
 --   - A mapping from policy variables to C expressions.
+--   - The name of the result variable
 --   - The result to be translated.
 -- Results:
 --   - A series of statements.  These will have the result of returning
 --     policyEFail from the current function if the rule result is failure.  If
 --     the rule result is to generate new tags, they'll assign new tags into the
 --     result array and return policySuccess from the current function.
-translateRuleResult :: String -> (QSym -> Maybe String) -> [(QSym,Exp)]
-                    -> TagInfo -> RuleResult QSym -> [BlockItem]
+translateRuleResult :: ModSymbols -> ModName -> String -> (QSym -> Maybe String) -> [(QSym,Exp)]
+                    -> TagInfo -> String -> RuleResult QSym -> [BlockItem]
 -- handle the explicit failure case by printing a message and return failure                    
-translateRuleResult _ _ _ _ (RRFail _ msg) = [citems|
+translateRuleResult _ _ _ _ _ _ _ (RRFail _ msg) = [citems|
                                                   $id:contextArgName->fail_msg = $string:msg;
                                                   return $id:policyEFailName;|]
-translateRuleResult mask ogMap varMap tagInfo (RRUpdate _ updates) =
-     (concatMap (translateBoundGroupEx mask ogMap varMap tagInfo) updates)
-  ++ [ [citem|return $id:policySuccessName;|] ]
+translateRuleResult ms topMod mask ogMap varMap tagInfo pass (RRUpdate _ updates) =
+     (concatMap (translateBoundGroupEx ms topMod mask ogMap varMap tagInfo pass) updates)
+  ++ [ [citem|return $id:pass;|] ]
 
 -- Arguments:
 --   - The name of the policy mask
 --   - A function that associates operands to C macros based on the opgroup.
 --   - A mapping from policy tag set variables to C tag set variables.
+--   - The name of the result variable     
 --   - The BoundGroupEx to be translated.
 -- Results:
 --  - A series of statements that compute a revised tag set and store it into
@@ -825,9 +906,9 @@ translateRuleResult mask ogMap varMap tagInfo (RRUpdate _ updates) =
 --
 -- This relies on a recursive helper function that descends through the tag set
 -- expression and roughly implements the judgment from the pdf.
-translateBoundGroupEx :: String -> (QSym -> Maybe String) -> [(QSym,Exp)]
-                      -> TagInfo -> BoundGroupEx QSym -> [BlockItem]
-translateBoundGroupEx mask ogMap varMap tagInfo (BoundGroupEx loc opr tse) =
+translateBoundGroupEx :: ModSymbols -> ModName -> String -> (QSym -> Maybe String) -> [(QSym,Exp)]
+                      -> TagInfo -> String -> BoundGroupEx QSym -> [BlockItem]
+translateBoundGroupEx ms mn mask ogMap varMap tagInfo pass (BoundGroupEx loc opr tse) =
   case ogMap opr of
     Nothing -> error $ "Rule result uses invalid operand " ++ show opr
                         ++ "(" ++ show loc ++ ")"
@@ -836,8 +917,15 @@ translateBoundGroupEx mask ogMap varMap tagInfo (BoundGroupEx loc opr tse) =
         { typename meta_set_t $id:topVar;
           $items:evalItems;
           for(int i = 0; i < META_SET_BITFIELDS; i++) {
-            ($id:resPositionName)->tags[i] |=
-              ($id:topVar.tags[i] & $id:mask[i]);
+            if((($id:resPositionName)->tags[i] & $id:ogMaskName[i]) == 0) {
+              ($id:resPositionName)->tags[i] |=
+                ($id:topVar.tags[i] & ($id:mask[i] | $id:ogMaskName[i]));
+            }
+            else {
+              if((($id:resPositionName)->tags[i] & $id:ogMaskName[i]) != ( $id:topVar.tags[i] & $id:ogMaskName[i])) {
+                $id:pass = $id:policyErrorName;
+              }
+            }
           }
           for(int i = META_SET_BITFIELDS; i < META_SET_WORDS; i++) {
             if($id:mask[i]) {
@@ -851,7 +939,7 @@ translateBoundGroupEx mask ogMap varMap tagInfo (BoundGroupEx loc opr tse) =
       |]
       where
         evalItems :: [BlockItem]
-        (evalItems,_) = translateTagSetEx vars topVar varMap tagInfo tse
+        (evalItems,_) = translateTagSetEx ms mn vars topVar varMap tagInfo tse
 
         resHasResult :: String
         resHasResult = resPositionName ++ "Result"
@@ -883,19 +971,19 @@ translateBoundGroupEx mask ogMap varMap tagInfo (BoundGroupEx loc opr tse) =
 --     policy, according to the policy mask, should be used from x.
 --   - The remaining variables from the fresh variable supply.
 --
-translateTagSetEx :: [String] -> String -> [(QSym,Exp)] -> TagInfo
+translateTagSetEx :: ModSymbols -> ModName -> [String] -> String -> [(QSym,Exp)] -> TagInfo
                   -> TagSetEx QSym -> ([BlockItem],[String])
-translateTagSetEx [] _ _ _ _ =
+translateTagSetEx _ _ [] _ _ _ _ =
   error "Internal error: translateTagSetEx exhausted its fresh name supply."
-translateTagSetEx (_:[]) _ _ _ _ =
+translateTagSetEx _ _ (_:[]) _ _ _ _ =
   error "Internal error: translateTagSetEx exhausted its fresh name supply."
-translateTagSetEx vars resVar varMap _ (TSEVar loc y) =
+translateTagSetEx _ _ vars resVar varMap _ (TSEVar loc y) =
   case lookup y varMap of
     Nothing -> error $ "Rule result uses unbound variable " ++ show y
                     ++ "(" ++ show loc ++ ")"
     Just ts -> ([citems|memcpy(&$id:resVar,$exp:ts,sizeof(typename meta_set_t));|],
                 vars)
-translateTagSetEx vars resVar varMap tagInfo (TSEExact _ tags) =
+translateTagSetEx ms mn vars resVar varMap tagInfo (TSEExact _ tags) =
   (map (\(idx,val) -> [citem|$id:resVar.tags[$exp:idx] = $exp:val;|]) exactFields,
    vars)
   where
@@ -903,9 +991,9 @@ translateTagSetEx vars resVar varMap tagInfo (TSEExact _ tags) =
     exactFields = zip [0..] (fixedTagSetFields tagInfo tagQSyms)
 
     tagQSyms :: [(QSym,[Exp])]
-    tagQSyms = map (\(Tag _ qs tfs) -> (qs,map (buildArgField varMap)
+    tagQSyms = map (\(Tag _ qs tfs) -> (qs,map (buildArgField ms mn varMap)
                                              $ zip tfs (argInfo qs)))
-                   tags
+                   qualifiedTags
       where
         argInfo :: QSym -> [(Word32,TypeDecl QSym)]
         argInfo qs =
@@ -913,9 +1001,11 @@ translateTagSetEx vars resVar varMap tagInfo (TSEExact _ tags) =
             Nothing -> error $ "Internal error: unknown tag " ++ tagString qs
                             ++ " in translateTagSetEx's arg lookup."
             Just ai -> ai
+    qualifiedTags :: [Tag QSym]
+    qualifiedTags = map (fmap (resolveQSym ms mn)) tags
 
         
-translateTagSetEx vars resVar varMap tagInfo (TSEModify _ tse mods) =
+translateTagSetEx ms mn vars resVar varMap tagInfo (TSEModify _ tse mods) =
   ([citems|
      $items:tseStmts;
      $items:modStmts;
@@ -924,10 +1014,13 @@ translateTagSetEx vars resVar varMap tagInfo (TSEModify _ tse mods) =
   where
     tseStmts :: [BlockItem]
     vars' :: [String]
-    (tseStmts,vars') = translateTagSetEx vars resVar varMap tagInfo tse
+    (tseStmts,vars') = translateTagSetEx ms mn vars resVar varMap tagInfo tse
 
+    qualifiedMods :: [TagEx QSym]
+    qualifiedMods = map (fmap (resolveQSym ms mn)) mods
+    
     modStmts :: [BlockItem]
-    modStmts = concatMap modStmt mods
+    modStmts = concatMap modStmt qualifiedMods
 
     modStmt :: TagEx QSym -> [BlockItem]
     modStmt (TagEx _ t) = tsAdd t
@@ -943,7 +1036,7 @@ translateTagSetEx vars resVar varMap tagInfo (TSEModify _ tse mods) =
             [citem|ms_bit_add(&$id:resVar,$id:(tagName qn));|]
           : map (\(tf,(loc,typ)) ->
                    [citem|$id:resVar.tags[$exp:loc] =
-                      $exp:(buildArgField varMap (tf,(loc,typ)));|])
+                      $exp:(buildArgField ms mn varMap (tf,(loc,typ)));|])
                 (zip args ainfo)
 
     tsRemove :: Tag QSym -> [BlockItem]
@@ -955,7 +1048,7 @@ translateTagSetEx vars resVar varMap tagInfo (TSEModify _ tse mods) =
             [citem|ms_bit_remove(&$id:resVar,$id:(tagName qn));|]
           : map (\(loc,_) -> [citem|$id:resVar.tags[$exp:loc] = 0;|])
                 ainfo
-translateTagSetEx (v1:v2:vars) resVar varMap tagInfo (TSEUnion _ tse1 tse2) =
+translateTagSetEx ms mn (v1:v2:vars) resVar varMap tagInfo (TSEUnion _ tse1 tse2) =
   ([citems|
      $items:tseStmts1;
      typename meta_set_t $id:v1;
@@ -967,9 +1060,9 @@ translateTagSetEx (v1:v2:vars) resVar varMap tagInfo (TSEUnion _ tse1 tse2) =
   where
     tseStmts1, tseStmts2 :: [BlockItem]
     vars', vars'' :: [String]
-    (tseStmts1,vars') = translateTagSetEx vars resVar varMap tagInfo tse1
-    (tseStmts2,vars'') = translateTagSetEx vars' v1 varMap tagInfo tse2
-translateTagSetEx (v1:vars) resVar varMap tagInfo (TSEIntersect _ tse1 tse2) =
+    (tseStmts1,vars') = translateTagSetEx ms mn vars resVar varMap tagInfo tse1
+    (tseStmts2,vars'') = translateTagSetEx ms mn vars' v1 varMap tagInfo tse2
+translateTagSetEx ms mn (v1:vars) resVar varMap tagInfo (TSEIntersect _ tse1 tse2) =
   ([citems|
      $items:tseStmts1;
      typename meta_set_t $id:v1;
@@ -980,21 +1073,24 @@ translateTagSetEx (v1:vars) resVar varMap tagInfo (TSEIntersect _ tse1 tse2) =
   where
     tseStmts1, tseStmts2 :: [BlockItem]
     vars', vars'' :: [String]
-    (tseStmts1,vars') = translateTagSetEx vars resVar varMap tagInfo tse1
-    (tseStmts2,vars'') = translateTagSetEx vars' v1 varMap tagInfo tse2
+    (tseStmts1,vars') = translateTagSetEx ms mn vars resVar varMap tagInfo tse1
+    (tseStmts2,vars'') = translateTagSetEx ms mn vars' v1 varMap tagInfo tse2
 
 --This builds a C expression corresponding to a tag argument field
-buildArgField :: [(QSym,Exp)] -> (TagField QSym,(Word32,TypeDecl QSym)) -> Exp
-buildArgField _ (TFTag sp _,_) = error $
+buildArgField :: ModSymbols -> ModName -> [(QSym,Exp)] -> (TagField QSym,(Word32,TypeDecl QSym)) -> Exp
+buildArgField _ _ _ (TFTag sp _,_) = error $
   "Unsupported: complex tag field at " ++ show sp
-buildArgField varMap (TFVar sp v,_) =
+buildArgField _ _ varMap (TFVar sp v,_) =
   case lookup v varMap of
     Nothing -> error $
       "Undefined variable " ++ tagString v ++ " at " ++ show sp
     Just e -> e
-buildArgField _ (TFNew _,(_,typ)) =
-  [cexp|$id:(typeGenFuncName $ qsym typ)(ctx)|]
-buildArgField _ (TFAny sp,_) = error $
+buildArgField ms mn _ (TFNew _,(_,typ)) =
+  [cexp|$id:(typeGenFuncName qualifiedType)(ctx)|]
+    where
+      qualifiedType = resolveQSym ms mn $ qsym typ
+      
+buildArgField _ _ _ (TFAny sp,_) = error $
   "Illegal: wildcard in tag argument definition at " ++ show sp    
 
 -- top of policy_rule.c

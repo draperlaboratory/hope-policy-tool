@@ -30,12 +30,13 @@ module AST where
 
 import Text.Megaparsec
 
+import ErrorMsg
+
 type Name = String
 type ModName = [String]
 type PolicyName = [String]
 type Inst = String
 type Incr = Bool
-type ErrMsg = String
 type QSym = QName [String]
 type ErrQSym = Either ErrMsg QSym
 
