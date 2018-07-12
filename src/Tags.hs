@@ -106,6 +106,7 @@ buildTagInfo ms allSyms =
            tiNumBitFields,
            tiNumDataArgs,
            tiArrayLength = tiNumBitFields + tiNumDataArgs,
+
            tiTagNames = map tagName declaredTags,
            tiGroupNames = map tagName ogFakeTagDecls,
            tiTagBitPositions = M.fromList $ zip (map tagName declaredTags)
@@ -134,7 +135,6 @@ buildTagInfo ms allSyms =
         grpDecls :: (ModName, QSym) -> Maybe (ModName, TagDecl QSym)
         grpDecls (mn, qg@(QGroup _)) = let (mn', gd) = getGroup ms mn qg in Just (mn', makeOGDecl gd)
         grpDecls _ = Nothing
-
         makeOGDecl :: GroupDecl a QSym -> TagDecl QSym
         makeOGDecl (GroupDecl sp nm _ _ _) = TagDecl sp (groupPrefix nm) []
         
