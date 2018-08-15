@@ -93,5 +93,7 @@ tagSetBody = [cunit|
   void ms_bit_add(meta_set_t* ms, meta_t m);
   void ms_bit_remove(meta_set_t* ms, meta_t m);
   int ms_union(meta_set_t* ms1, const meta_set_t* ms2);
+  void ms_zero(meta_set_t *ms);
+  unsigned long ms_count(const meta_set_t* ms);
 |]
 

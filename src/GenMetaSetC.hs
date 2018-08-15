@@ -62,6 +62,8 @@ tagSetBody =
    msAddDef,
    msRemoveDef,
    msEqDef,
+   msZeroDef,
+   msCountDef,
    msUnionDef]
 
 msEqDef :: Definition
@@ -79,6 +81,24 @@ msEqDef = [cedecl|
       }
     }
     return true;
+  }
+|]
+
+msCountDef :: Definition
+msCountDef = [cedecl|
+  unsigned long ms_count(const typename meta_set_t* ms) {
+
+    int t = 0;
+    unsigned long ret = 0;
+
+    for ( t = 0; t <= MAX_TAG; t++ ) {
+
+      /* compare the offset in the correct ms array entry */
+      if ( ms_contains(ms, t) )
+        ret += 1;
+    }
+
+    return ret;
   }
 |]
 
@@ -110,9 +130,19 @@ msContainsDef = [cedecl|
   }
 |]
 
-
--- NOTE: ms_bit_add and ms_bit_remove only handle the bit in the bitfield for
+-- NOTE: ms_zero, ms_bit_add and ms_bit_remove only handle the bit in the bitfield for
 -- the corresponding tag.  They do not handle tag arguments
+msZeroDef::Definition
+msZeroDef = [cedecl|
+  void ms_zero(typename meta_set_t *ms) {
+    int i;
+
+    memset(ms, 0, sizeof(meta_set_t));
+
+    return;
+  }
+|]
+
 msAddDef :: Definition
 msAddDef = [cedecl|
   void ms_bit_add(typename meta_set_t* ms, typename meta_t m) {
