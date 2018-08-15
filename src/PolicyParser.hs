@@ -393,7 +393,7 @@ pGroupParam = GroupParam <$> getPosition <*> pTS <* colon <*> pVarQName
 pIsaDecl :: DPLParser ISA    
 pIsaDecl = do
   srcPos <- getPosition
-  inst <- identifier
+  inst <- identifierWithDots
   pOpSpecs <- optional (sepBy1 pOpSpec comma) -- require 1 to have optional fail properly
   return (Asm srcPos inst pOpSpecs)
 
@@ -473,13 +473,21 @@ rws = ["module","import","tag","metadata","type","data"
       ,"Int","policy","group","bind","isa", "new", "fail"
       ,"if", "then", "else","require", "init"]
 
-identifier :: DPLParser String
-identifier = (lexeme . try) (p >>= check)
+-- bool is whether to allow dots in name
+idGen :: Bool -> DPLParser String
+idGen dots = (lexeme . try) (p >>= check)
   where
-    p       = (:) <$> letterChar <*> many (try alphaNumChar <|> oneOf "_-")
+    idChars = if dots then "_-." else "_-"
+    p       = (:) <$> letterChar <*> many (try alphaNumChar <|> oneOf idChars)
     check x = if x `elem` rws
                 then fail $ "keyword " ++ show x ++ " cannot be an identifier"
                 else return x
+
+identifier :: DPLParser String
+identifier = idGen False
+
+identifierWithDots :: DPLParser String
+identifierWithDots = idGen True
 
 entity :: DPLParser String
 entity = lexeme $ many ((try alphaNumChar) <|> oneOf "_-")
