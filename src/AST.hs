@@ -152,6 +152,7 @@ data PolicyEx n = PEVar SourcePos n
                 | PECompPriority SourcePos (PolicyEx n) (PolicyEx n)
                 | PECompModule SourcePos (PolicyEx n) (PolicyEx n)
                 | PERule SourcePos (RuleClause n)
+                | PENoChecks SourcePos
   deriving (Show, Eq, Functor, Foldable)
 
 ---------------------------------------------    Requires      --------------------------------------------
