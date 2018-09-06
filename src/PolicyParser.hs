@@ -289,12 +289,16 @@ polOps =
 polTerm :: DPLParser PolicyExSym
 polTerm  =  (parens pPolicyExpr)
         <|> pPERule
+        <|> pPENoChecks
         <|> pPEVar
 
 
 
 pPolicyExpr :: DPLParser (PolicyEx QSym)
 pPolicyExpr = (makeExprParser polTerm polOps) <?> "policy expression"
+
+pPENoChecks :: DPLParser (PolicyEx QSym)
+pPENoChecks = reserved "__NO_CHECKS" >> PENoChecks <$> getPosition
 
 pPEVar :: DPLParser (PolicyEx QSym)
 pPEVar = PEVar <$> getPosition <*> pPolicyQN
@@ -471,7 +475,7 @@ reserved w = lexeme $ string w *> notFollowedBy alphaNumChar
 rws :: [String] -- list of reserved words
 rws = ["module","import","tag","metadata","type","data"
       ,"Int","policy","group","bind","isa", "new", "fail"
-      ,"if", "then", "else","require", "init"]
+      ,"if", "then", "else","require", "init", "__NO_CHECKS"]
 
 -- bool is whether to allow dots in name
 idGen :: Bool -> DPLParser String

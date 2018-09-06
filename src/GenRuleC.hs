@@ -135,6 +135,7 @@ ruleLogStructure ms topMod (Just p) =
       pexCount (PECompExclusive _ lhs rhs) = pexCount lhs + pexCount rhs
       pexCount (PECompPriority _ lhs rhs) =  pexCount lhs + pexCount rhs
       pexCount (PECompModule _ lhs rhs) =  pexCount lhs + pexCount rhs
+      pexCount (PENoChecks _) = 0
       pexCount (PERule _ _) = 0
 
   -- Constant definitions for policy evaluation results
@@ -689,6 +690,9 @@ translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompExclusive _ p1 p2) =
      p2' = translatePolicy dbg ms ogMap pd tagInfo pass modN p2
 translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompPriority l p1 p2) =
   translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompExclusive l p1 p2)
+translatePolicy _ _ _ _ _ pass _ (PENoChecks _) =
+  [citems|$id:pass = $id:policySuccessName;
+          return $id:pass;|]
 translatePolicy _ _ _ _ _ _ _ (PECompModule _ _p1 _p2) =
   error "Unsupported: PECompModule in translatePolicy"
 translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
