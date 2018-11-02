@@ -913,19 +913,18 @@ translateBoundGroupEx ms mn mask ogMap varMap tagInfo pass (BoundGroupEx loc opr
     Nothing -> error $ "Rule result uses invalid operand " ++ show opr
                         ++ "(" ++ show loc ++ ")"
     Just resPositionName ->
+      -- Note that here we remove any opgroup tags from the computed tag sets.
+      -- This kind of makes sense - if you write to code memory, you want to
+      -- wipe the opgroups because the new value may not be the same kind of
+      -- instruction, or any instruction at all.  And in general users don't
+      -- know that opgroups are in tag sets, so they shouldn't expect them to be
+      -- preserved.  This may be wrong, though, for "global" policies like the
+      -- loader.
       [citems|
         { typename meta_set_t $id:topVar;
           $items:evalItems;
           for(int i = 0; i < META_SET_BITFIELDS; i++) {
-            if((($id:resPositionName)->tags[i] & $id:ogMaskName[i]) == 0) {
-              ($id:resPositionName)->tags[i] |=
-                ($id:topVar.tags[i] & ($id:mask[i] | $id:ogMaskName[i]));
-            }
-            else {
-              if((($id:resPositionName)->tags[i] & $id:ogMaskName[i]) != ( $id:topVar.tags[i] & $id:ogMaskName[i])) {
-                $id:pass = $id:policyErrorName;
-              }
-            }
+              ($id:resPositionName)->tags[i] |= ($id:topVar.tags[i] & $id:mask[i]);
           }
           for(int i = META_SET_BITFIELDS; i < META_SET_WORDS; i++) {
             if($id:mask[i]) {
