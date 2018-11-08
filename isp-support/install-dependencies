@@ -14,7 +14,7 @@ pushd $SCRIPT_DIR > /dev/null
 rm -rf ./stack.html
 wget -O ./stack.html https://get.haskellstack.org/
 
-sha512sum -c <<< "d9c041a79cb9d94c80b6766151715790ddda0ac1512801529b81ec129d224d79753444cb67c27022179d16a0f4eba6af832927a2e31f77ae7e446b3b25ab33a0  stack.html"
+sha512sum -c <<< "4ec9c36549bfe39b00b4bcbc41f2e2b92b56c83774a50e3003d085e0750019bf9efb6817c9ab45e69e65df3ade027962c7ace1406ca05cde77c096e34eee865c  stack.html"
 
 bash stack.html -f
 rm -rf ./stack.html
