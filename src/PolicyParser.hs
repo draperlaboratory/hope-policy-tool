@@ -192,7 +192,7 @@ pBoundGroupPat =
   <?> "metadata pattern match \"metadataName == metadataPattern\""
 
 pRuleResult :: DPLParser (RuleResult QSym)
-pRuleResult = (pRRFail <|> pRRUpdate) <?> "rule result"
+pRuleResult = ((pRRFail <|> pRRUpdate) <* lift spaceConsumer) <?> "rule result"
   where
     pRRFail :: DPLParser (RuleResult QSym)
     pRRFail = RRFail <$> getPosition <* reserved "fail" <*> stringLiteral
