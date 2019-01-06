@@ -98,7 +98,6 @@ printPolicy (PolicyDecl _ _ pqn ex) = [fmt 1 (unqualSymStr pqn) ++ " = "] ++ (ma
     printTag (Tag _ t []) = printQN t
     printTag (Tag _ _ fs) = mkParen $ intercalate " " $ map printTagField fs
 
-    printTagField (TFTag _ t) = printTag t
     printTagField (TFVar _ var) = printQN var
     printTagField (TFNew _ ) = "new"
     printTagField (TFAny _ ) = "_"

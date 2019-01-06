@@ -35,6 +35,7 @@ import qualified Data.Set as S
 
 import AST
 import CommonFn
+import CommonTypes
 import SrcPrinter
 import Symbols
 import Debug
@@ -57,28 +58,6 @@ import GenInitY
 import GenGroupY
 import GenEntityY
 
-data Options = Options  { optIR          :: Bool
-                        , optDebug       :: Bool
-                        , optRules       :: Bool
-                        , optProfile     :: Bool
-                        , optLogging     :: Bool
-                        , optModuleDir   :: String
-                        , optTargetDir   :: String
-                        , optOutputDir   :: String
-                        , optFileName    :: String
-                        }
-
-defaultOptions :: Options
-defaultOptions = Options { optDebug    = False
-                         , optRules = False
-                         , optProfile = False
-                         , optLogging = False
-                         , optIR  = False
-                         , optModuleDir     = ""
-                         , optTargetDir     = ""
-                         , optOutputDir     = ""
-                         , optFileName     = "policy"
-                         }
 {-                 
 genSrcFiles :: Options -> [ModuleDecl QSym] -> IO ()
 genSrcFiles opts modules =

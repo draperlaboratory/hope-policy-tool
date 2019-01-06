@@ -1,0 +1,424 @@
+{
+module PolicyParser (polParse,moduleFile) where
+
+  
+import PolicyLexer
+import AST
+import CommonTypes (Options(..))
+import ErrorMsg (ErrMsg(..))
+import System.FilePath ((</>),(<.>),joinPath)
+}
+
+%monad { P }
+%lexer { lexer } { L _ TEOF }
+%tokentype { (Located Token) }
+
+%name parseModule module
+
+%left '&' '^' '|'
+
+%left '/\\' '\\/' '['
+
+%token
+  '('              { L _ TOParen }
+  ')'              { L _ TCParen }
+  '['              { L _ TOBracket }
+  ']'              { L _ TCBracket }
+  '{'              { L _ TOCurly }
+  '}'              { L _ TCCurly }
+  '=='             { L _ TMatch }
+  '->'             { L _ TArrow }
+  '='              { L _ TAssign }
+  '^'              { L _ TCompSeq }
+  '|'              { L _ TCompExcl }
+  '&'              { L _ TCompModule }
+  '+'              { L _ TPlus }
+  '-'              { L _ TMinus }
+  '_'              { L _ TUnderscore }
+  ':'              { L _ TColon }
+  ','              { L _ TComma }
+  '*'              { L _ TStar }
+  '\\/'             { L _ TUnion }
+  '/\\'             { L _ TIntersection }
+
+  'module'         { L _ TModule }
+  'import'         { L _ TImport }
+  'type'           { L _ TType }
+  'data'           { L _ TData }
+  'Int'            { L _ TInt }
+  'metadata'       { L _ TMetadata }
+  'group'          { L _ TGroup }
+  'grp'            { L _ TGrp }
+
+  'RD'             { L _ TRD }
+  'RS1'            { L _ TRS1 }
+  'RS2'            { L _ TRS2 }
+  'RS3'            { L _ TRS3 }
+  'CSR'           { L _ TCSR }
+  'MEM'           { L _ TMEM }
+
+  'policy'         { L _ TPolicy }
+  'global'         { L _ TGlobal }
+  'fail'           { L _ TFail }
+  'new'            { L _ TNew }
+  'require'        { L _ TRequire }
+  'init'           { L _ TInit }
+
+  'x0'             { L _ TX0  }
+  'x1'             { L _ TX1  }
+  'x2'             { L _ TX2  }
+  'x3'             { L _ TX3  }
+  'x4'             { L _ TX4  }
+  'x5'             { L _ TX5  }
+  'x6'             { L _ TX6  }
+  'x7'             { L _ TX7  }
+  'x8'             { L _ TX8  }
+  'x9'             { L _ TX9  }
+  'x10'            { L _ TX10 }
+  'x11'            { L _ TX11 }
+  'x12'            { L _ TX12 }
+  'x13'            { L _ TX13 }
+  'x14'            { L _ TX14 }
+  'x15'            { L _ TX15 }
+  'x16'            { L _ TX16 }
+  'x17'            { L _ TX17 }
+  'x18'            { L _ TX18 }
+  'x19'            { L _ TX19 }
+  'x20'            { L _ TX20 }
+  'x21'            { L _ TX21 }
+  'x22'            { L _ TX22 }
+  'x23'            { L _ TX23 }
+  'x24'            { L _ TX24 }
+  'x25'            { L _ TX25 }
+  'x26'            { L _ TX26 }
+  'x27'            { L _ TX27 }
+  'x28'            { L _ TX28 }
+  'x29'            { L _ TX29 }
+  'x30'            { L _ TX30 }
+  'x31'            { L _ TX31 }
+
+
+  '__NO_CHECKS'    { L _ TNOCHECKS }
+
+  QNAME            { L _ (TID _) }
+  INTLIT           { L _ (TIntLit $$) }
+  STRINGLIT        { L _ (TStringLit $$) }
+
+
+%%
+
+------------------------------------------------------------------------------
+---------- Top Level                                                  ----------
+------------------------------------------------------------------------------
+module :: { ModuleDecl QSym }
+  : 'module' QNAME ':' sections
+       { ModuleDecl (getSrcPos $1) (qualifyName $2) (reverse $4) }
+
+sections :: { [SectDecl QSym] }
+  : section { [$1] }
+  | sections section {$2 : $1}
+
+section :: { SectDecl QSym }
+  : 'import' ':' importSect     { Imports $ reverse $3 }
+  | 'type' ':' typeSect         { Types $ reverse $3 }
+  | 'metadata' ':' metadataSect { Tags $ reverse $3 }
+  | 'group' ':' groupSect       { Groups $ reverse $3 }
+  | 'policy' ':' policySect     { Policies $ reverse $3 }
+  | 'require' ':' requireSect   { Require $ reverse $3 }
+
+------------------------------------------------------------------------------
+---------- Imports                                                  ----------
+------------------------------------------------------------------------------
+
+importSect :: { [ImportDecl QSym] }
+  : importStmt            { [$1] }
+  | importSect importStmt { $2 : $1 }
+
+importStmt :: { ImportDecl QSym }
+  : QNAME  { ImportDecl (getSrcPos $1) (qualifyName $1) }
+
+------------------------------------------------------------------------------
+---------- Types                                                    ----------
+------------------------------------------------------------------------------
+
+typeSect :: { [TypeDecl QSym] }
+  : typeDecl           { [$1] }
+  | typeSect typeDecl  { $2 : $1 }
+
+typeDecl :: { TypeDecl QSym }
+  : 'data' QNAME '=' tagDataType
+       { TypeDecl (getSrcPos $1) (QType [getName $2]) $4 }
+
+tagDataType :: { TagDataType }
+  : 'Int' optionalSize    { TDTInt (getSrcPos $1) $2 }
+
+optionalSize :: { Maybe Int }
+  : '(' INTLIT ')'   { Just $2 }
+  | {- empty -}      { Nothing }
+
+------------------------------------------------------------------------------
+---------- Metadata                                                 ----------
+------------------------------------------------------------------------------
+
+metadataSect :: { [TagDecl QSym] }
+  : mdDecl                   { [$1] }
+  | metadataSect ',' mdDecl  { $3 : $1 }
+
+-- This needs to be fixed! XXX
+mdDecl :: { TagDecl QSym }
+  : QNAME typeList
+       { TagDecl (getSrcPos $1) (QTag [getName $1]) (reverse $2) }
+
+typeList :: { [QSym] }
+  : {- empty -}       { [] }
+  | typeList QNAME    { QType [getName $2] : $1 }
+
+------------------------------------------------------------------------------
+---------- Group                                                    ----------
+------------------------------------------------------------------------------
+groupSect :: { [GroupDecl [ISA] QSym] }
+  : groupDecl            { [$1] }
+  | groupSect groupDecl  { $2 : $1 }
+
+groupDecl :: { GroupDecl [ISA] QSym }
+  : 'grp' QNAME '(' grpParams '->' grpParams ')' grpInsts
+      { GroupDecl (getSrcPos $1) (QGroup [getName $2]) (reverse $4)
+                  (reverse $6) (reverse $8) }
+
+grpParams :: { [GroupParam QSym] }
+  : {- empty -}            { [] }
+  | grpParam               { [$1] }
+  | grpParams ',' grpParam { $3 : $1 }
+
+grpParam :: { GroupParam QSym }
+  : tagSpec ':' QNAME
+       { GroupParam (getSrcPos $2) $1 (QVar [getName $3]) }
+
+tagSpec :: { TagSpec }
+  : 'RD'  { RD }
+  | 'RS1' { RS1 }
+  | 'RS2' { RS2 }
+  | 'RS3' { RS3 }
+  | 'CSR' { Csr }
+  | 'MEM' { Mem }
+
+grpInsts :: { [ISA] }
+  : inst     { [$1] }
+  | grpInsts inst { $2 : $1 }
+
+inst :: { ISA }
+  : QNAME opspecs
+      { Asm (getSrcPos $1) (getName $1)
+            (if null $2 then Nothing else Just (reverse $2)) }
+
+opspecs :: { [OpSpec] }
+  : {- empty -}          { [] }
+  | opspec               { [$1] }
+  | opspecs ',' opspec   { $3 : $1 }
+
+opspec :: { OpSpec }
+  : '*'              { AnyOp }
+  | INTLIT           { Const $ toInteger $1 }
+  | 'x0'             { Reg X0 }
+  | 'x1'             { Reg X1 }
+  | 'x2'             { Reg X2 }
+  | 'x3'             { Reg X3 }
+  | 'x4'             { Reg X4 }
+  | 'x5'             { Reg X5 }
+  | 'x6'             { Reg X6 }
+  | 'x7'             { Reg X7 }
+  | 'x8'             { Reg X8 }
+  | 'x9'             { Reg X9 }
+  | 'x10'            { Reg X10 }
+  | 'x11'            { Reg X11 }
+  | 'x12'            { Reg X12 }
+  | 'x13'            { Reg X13 }
+  | 'x14'            { Reg X14 }
+  | 'x15'            { Reg X15 }
+  | 'x16'            { Reg X16 }
+  | 'x17'            { Reg X17 }
+  | 'x18'            { Reg X18 }
+  | 'x19'            { Reg X19 }
+  | 'x20'            { Reg X20 }
+  | 'x21'            { Reg X21 }
+  | 'x22'            { Reg X22 }
+  | 'x23'            { Reg X23 }
+  | 'x24'            { Reg X24 }
+  | 'x25'            { Reg X25 }
+  | 'x26'            { Reg X26 }
+  | 'x27'            { Reg X27 }
+  | 'x28'            { Reg X28 }
+  | 'x29'            { Reg X29 }
+  | 'x30'            { Reg X30 }
+  | 'x31'            { Reg X31 }
+
+------------------------------------------------------------------------------
+---------- Policy                                                   ----------
+------------------------------------------------------------------------------
+
+policySect :: { [PolicyDecl QSym] }
+  : policyDecl             { [$1] }
+  | policySect policyDecl  { $2 : $1 }
+
+policyDecl :: { PolicyDecl QSym }
+  : locality QNAME '=' policyExp
+       { PolicyDecl (getSrcPos $2) $1 (QPolicy [getName $2]) $4 }
+
+locality :: { PolicyLocality }
+  : {- empty -}           { PLLocal }
+  | 'global'              { PLGlobal }
+
+policyExp :: { PolicyEx QSym }
+  : policyRule                { $1 }
+  | policyExp '&' policyExp   { PECompModule (policyExSrcPos $1) $1 $3 }
+  | policyExp '|' policyExp   { PECompExclusive (policyExSrcPos $1) $1 $3 }
+  | policyExp '^' policyExp   { PECompPriority (policyExSrcPos $1) $1 $3 }
+  | '__NO_CHECKS'             { PENoChecks (getSrcPos $1) }
+  | QNAME                     { PEVar (getSrcPos $1) (QPolicy [getName $1]) }
+
+policyRule :: { PolicyEx QSym }
+  : QNAME '(' boundGroupPats ruleResult ')'
+       { PERule (getSrcPos $1) $
+            RuleClause (getSrcPos $1) (QGroup [getName $1]) (reverse $3) $4 }
+
+boundGroupPats :: { [BoundGroupPat QSym] }
+  : {- empty -}                       { [] }
+  | boundGroupPat                     { [$1] }
+  | boundGroupPats ',' boundGroupPat  { $3 : $1 }
+
+boundGroupPat :: { BoundGroupPat QSym }
+  : QNAME '==' tagSetPat
+      { BoundGroupPat (getSrcPos $1) (QVar [getName $1]) $3 }
+
+tagSetPat :: { TagSetPat QSym }
+  : '_'              { TSPAny $ getSrcPos $1 }
+  | '{' tags '}'     { TSPExact (getSrcPos $1) (reverse $2) }
+  | '[' tagExs ']'   { TSPAtLeast (getSrcPos $1) (reverse $2) }
+
+tags :: { [Tag QSym] }
+  : {- empty -}      { [] }
+  | tag              { [$1] }
+  | tags ',' tag     { $3 : $1 }
+
+-- optional parens
+tag :: { Tag QSym }
+  : tagBody          { $1 }
+  | '(' tagBody ')'  { $2 }
+
+tagBody :: { Tag QSym }
+  : QNAME fields     { Tag (getSrcPos $1) (QTag [getName $1]) $2 }
+
+fields :: { [TagField QSym] }
+  : {- empty -}      { [] }
+  | fields field     { $2 : $1 }
+
+-- optional parens
+field :: { TagField QSym }
+  : fieldBody          { $1 }
+  | '(' fieldBody ')'  { $2 }
+
+fieldBody :: { TagField QSym }
+  : 'new'            { TFNew (getSrcPos $1) }
+  | QNAME            { TFVar (getSrcPos $1) (QVar [getName $1]) }
+  | '_'              { TFAny (getSrcPos $1) }
+
+tagExs :: { [TagEx QSym] }
+  : {- empty -}        { [] }
+  | tagEx              { [$1] }
+  | tagExs ',' tagEx   { $3 : $1 }
+
+tagEx :: { TagEx QSym }
+  : tagMod tag       { $1 (pos $2) $2 }
+
+tagMod :: { SrcPos -> Tag QSym -> TagEx QSym }
+  : {- empty -}      { TagEx }
+  | '+'              { TagPlusEx }
+  | '-'              { TagMinusEx }
+
+ruleResult :: { RuleResult QSym }
+  : '->' 'fail' STRINGLIT    { RRFail (getSrcPos $2) $3 }
+  | '->' boundGroupExs       { RRUpdate (getSrcPos $1) $2 }
+
+boundGroupExs :: { [BoundGroupEx QSym] }
+  : {- empty -}                     { [] }
+  | boundGroupEx                    { [$1] }
+  | boundGroupExs ',' boundGroupEx  { $3 : $1 }
+
+boundGroupEx :: { BoundGroupEx QSym }
+  : QNAME '=' tagSetEx
+      { BoundGroupEx (getSrcPos $1) (QVar [getName $1]) $3 }
+
+tagSetEx :: { TagSetEx QSym }
+  : '{' tags '}'              { TSEExact (getSrcPos $1) (reverse $2) }
+  | tagSetEx '[' tagExs ']'   { TSEModify (getSrcPos $2) $1 (reverse $3) }
+  | tagSetEx '\\/' tagSetEx   { TSEUnion (getSrcPos $2) $1 $3 }
+  | tagSetEx '/\\' tagSetEx   { TSEIntersect (getSrcPos $2) $1 $3 }
+  | QNAME                     { TSEVar (getSrcPos $1) (QVar [getName $1]) }
+
+------------------------------------------------------------------------------
+---------- Requires                                                 ----------
+------------------------------------------------------------------------------
+
+requireSect :: { [RequireDecl QSym] }
+  : requireDecl              { [$1] }
+  | requireSect requireDecl  { $2 : $1 }
+
+requireDecl :: { RequireDecl QSym }
+  : 'init' QNAME requireSet
+      { Init (getSrcPos $1) (qualifyName $2) $3 }
+
+requireSet :: { InitSet QSym }
+  : '{' tags '}'       { ISExact (getSrcPos $1) (reverse $2) }
+
+
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+
+
+{
+happyError :: P a
+happyError = alexError "parse error."
+
+separate :: String -> [String]
+separate = sep [] []
+  where
+    sep :: [String] -> String -> String -> [String]
+    sep acc []    []      = reverse acc
+    sep acc chunk []      = reverse (reverse chunk : acc)
+    sep acc []    ('.':s) = sep acc [] s
+    sep acc chunk ('.':s) = sep (reverse chunk : acc) [] s
+    sep acc chunk (c:s)   = sep acc (c:chunk) s
+
+getName :: Located Token -> String
+getName (L _ (TID nm)) = nm
+getName (L _ t) = error $
+     "Impossible: parser encountered non-identifier token ("
+  ++ show t ++ ") after checking for identifier in getName."
+
+qualifyName :: Located Token -> [String]
+qualifyName t = separate $ getName t
+
+polParse :: Options -> ModName -> IO (Either ErrMsg (ModuleDecl QSym))
+polParse opts qmn =
+  let file = moduleFile opts qmn in do
+    putStrLn ("Reading file: " ++ file)
+    contents <- readFile file
+    return $ runP file contents parseModule
+
+moduleFile :: Options -> [FilePath] -> FilePath
+moduleFile opts qmn = (optModuleDir opts) </> (joinPath qmn <.> "dpl")
+
+policyExSrcPos :: PolicyEx a -> SrcPos
+policyExSrcPos (PEVar sp _) = sp
+policyExSrcPos (PECompExclusive sp _ _) = sp
+policyExSrcPos (PECompPriority sp _ _)  = sp
+policyExSrcPos (PECompModule sp _ _)    = sp
+policyExSrcPos (PERule sp _)            = sp
+policyExSrcPos (PENoChecks sp)          = sp
+
+-- Useful for debugging
+--main = do
+--  s <- getContents
+--  print $ runP "<stdin>" s parseModule
+}

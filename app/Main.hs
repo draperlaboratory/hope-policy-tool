@@ -40,6 +40,7 @@ import Generator
 import Symbols
 import Validate
 import CommonFn
+import CommonTypes
 import ErrorMsg
 
 options :: [ OptDescr (Options -> IO Options) ]

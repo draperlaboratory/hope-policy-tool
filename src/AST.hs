@@ -28,8 +28,6 @@
 {-# LANGUAGE DeriveFunctor #-}
 module AST where
 
-import Text.Megaparsec
-
 import ErrorMsg
 
 type Name = String
@@ -40,20 +38,26 @@ type Incr = Bool
 type QSym = QName [String]
 type ErrQSym = Either ErrMsg QSym
 
+data SrcPos = SP !String !Int !Int  -- filename, line, column
+  deriving (Eq,Show,Ord)
+
+ppSrcPos :: SrcPos -> String
+ppSrcPos (SP f l c) = f ++ ":" ++ show l ++ ":" ++ show c
+
 ---------------------------------------------   Symbols   --------------------------------------------
 data QName n = QVar n | QTag n | QPolicy n | QGroup n | QType n
   deriving (Show, Eq, Ord, Functor, Foldable)
 
 class Symbol n where
   qsym :: n -> QSym
-  pos :: n -> SourcePos
+  pos :: n -> SrcPos
   
 ---------------------------------------------   Module    --------------------------------------------
-data ModuleDecl n = ModuleDecl SourcePos ModName [SectDecl n]
+data ModuleDecl n = ModuleDecl SrcPos ModName [SectDecl n]
   deriving (Show, Eq, Functor, Foldable)
 
 ---------------------------------------------   Import     --------------------------------------------
-data ImportDecl n = ImportDecl SourcePos ModName
+data ImportDecl n = ImportDecl SrcPos ModName
   deriving (Show, Eq, Functor, Foldable)
 
 ---------------------------------------------   Sections    --------------------------------------------
@@ -67,23 +71,23 @@ data SectDecl n = Imports [ImportDecl n]
 
 ----------------------------------------------   Type       --------------------------------------------
 
-data TypeDecl n = TypeDecl SourcePos n TagDataType
+data TypeDecl n = TypeDecl SrcPos n TagDataType
   deriving (Show, Eq, Ord, Functor, Foldable)
 
 instance Symbol (TypeDecl QSym) where
   qsym (TypeDecl _ qn _) = qn
   pos (TypeDecl p _ _) = p
 
-data TagDataType = TDTInt SourcePos (Maybe Int)
+data TagDataType = TDTInt SrcPos (Maybe Int)
   deriving (Show,Eq,Ord)
 
 
 ----------------------------------------------   Tag        --------------------------------------------
-data TagDecl n = TagDecl SourcePos n [n]
+data TagDecl n = TagDecl SrcPos n [n]
   deriving (Show, Eq, Ord, Functor, Foldable)
 
 
-data Tag n = Tag SourcePos n [TagField n]
+data Tag n = Tag SrcPos n [TagField n]
   deriving (Show, Eq, Ord, Functor, Foldable)
 
 instance Symbol (Tag QSym) where
@@ -91,26 +95,25 @@ instance Symbol (Tag QSym) where
   pos  (Tag p _ _) = p
 
 
-data TagField n = TFTag SourcePos (Tag n)
-                | TFVar SourcePos n
-                | TFNew SourcePos
-                | TFAny SourcePos
+data TagField n = TFVar SrcPos n
+                | TFNew SrcPos
+                | TFAny SrcPos
   deriving (Show, Eq, Ord, Functor, Foldable)
 
 ---------------------------------------------   Set        --------------------------------------------
 
-data TagSetPat n = TSPAny SourcePos
---                 | TSPVar SourcePos n
-                 | TSPExact SourcePos [Tag n]
-                 | TSPAtLeast SourcePos [TagEx n]
---                 | TSPVarSet SourcePos n (TagSetPat n)
+data TagSetPat n = TSPAny SrcPos
+--                 | TSPVar SrcPos n
+                 | TSPExact SrcPos [Tag n]
+                 | TSPAtLeast SrcPos [TagEx n]
+--                 | TSPVarSet SrcPos n (TagSetPat n)
   deriving (Show, Eq, Functor, Foldable)
 
-data TagSetEx n = TSEVar  SourcePos n
-                | TSEExact SourcePos [Tag n]
-                | TSEModify SourcePos (TagSetEx n) [TagEx n]
-                | TSEUnion SourcePos (TagSetEx n) (TagSetEx n)
-                | TSEIntersect SourcePos (TagSetEx n) (TagSetEx n)
+data TagSetEx n = TSEVar  SrcPos n
+                | TSEExact SrcPos [Tag n]
+                | TSEModify SrcPos (TagSetEx n) [TagEx n]
+                | TSEUnion SrcPos (TagSetEx n) (TagSetEx n)
+                | TSEIntersect SrcPos (TagSetEx n) (TagSetEx n)
   deriving (Show, Eq, Functor, Foldable)
 
 
@@ -118,58 +121,58 @@ instance Symbol (TagDecl QSym) where
   qsym (TagDecl _ qn _) = qn
   pos  (TagDecl p _ _) = p
 
-data TagEx n = TagEx SourcePos (Tag n)
-             | TagPlusEx SourcePos (Tag n)
-             | TagMinusEx SourcePos (Tag n)
+data TagEx n = TagEx SrcPos (Tag n)
+             | TagPlusEx SrcPos (Tag n)
+             | TagMinusEx SrcPos (Tag n)
   deriving (Show, Eq, Functor, Foldable)
                 
 ---------------------------------------------   Policy     --------------------------------------------
 data PolicyLocality = PLLocal | PLGlobal
   deriving (Show, Eq)
 
-data PolicyDecl n = PolicyDecl SourcePos PolicyLocality n (PolicyEx n)
+data PolicyDecl n = PolicyDecl SrcPos PolicyLocality n (PolicyEx n)
   deriving (Show, Eq, Functor, Foldable)
            
 instance Symbol (PolicyDecl QSym) where
   qsym (PolicyDecl _ _ qn _) = qn
   pos  (PolicyDecl p _ _ _) = p
 
-data RuleClause n = RuleClause SourcePos n [BoundGroupPat n] (RuleResult n)
+data RuleClause n = RuleClause SrcPos n [BoundGroupPat n] (RuleResult n)
   deriving (Show, Eq, Functor, Foldable)
 
-data BoundGroupPat n = BoundGroupPat SourcePos n (TagSetPat n)
+data BoundGroupPat n = BoundGroupPat SrcPos n (TagSetPat n)
   deriving (Show, Eq, Functor, Foldable)
 
-data RuleResult n = RRFail SourcePos String
-                  | RRUpdate SourcePos [BoundGroupEx n]
+data RuleResult n = RRFail SrcPos String
+                  | RRUpdate SrcPos [BoundGroupEx n]
   deriving (Show, Eq, Functor, Foldable)
 
-data BoundGroupEx n = BoundGroupEx SourcePos n (TagSetEx n)
+data BoundGroupEx n = BoundGroupEx SrcPos n (TagSetEx n)
   deriving (Show, Eq, Functor, Foldable)
 
-data PolicyEx n = PEVar SourcePos n
-                | PECompExclusive SourcePos (PolicyEx n) (PolicyEx n)
-                | PECompPriority SourcePos (PolicyEx n) (PolicyEx n)
-                | PECompModule SourcePos (PolicyEx n) (PolicyEx n)
-                | PERule SourcePos (RuleClause n)
-                | PENoChecks SourcePos
+data PolicyEx n = PEVar SrcPos n
+                | PECompExclusive SrcPos (PolicyEx n) (PolicyEx n)
+                | PECompPriority SrcPos (PolicyEx n) (PolicyEx n)
+                | PECompModule SrcPos (PolicyEx n) (PolicyEx n)
+                | PERule SrcPos (RuleClause n)
+                | PENoChecks SrcPos
   deriving (Show, Eq, Functor, Foldable)
 
 ---------------------------------------------    Requires      --------------------------------------------
 
-data RequireDecl n = Init SourcePos [String] (InitSet n)
+data RequireDecl n = Init SrcPos [String] (InitSet n)
   deriving (Show, Eq, Functor, Foldable)
 {-
-data InitDecl n = Default SourcePos String (Maybe String) (InitSet n)
-                | Symbol SourcePos String (Maybe String) (InitSet n)
-                | Range SourcePos String String (Maybe String) (InitSet n)
-                | Zero SourcePos (Maybe String) (InitSet n)
-                | Section SourcePos String (Maybe String) (InitSet n)
-                | Flag SourcePos ElfFlg (Maybe String) (InitSet n)
-                | Meta SourcePos String (Maybe String) (InitSet n)
+data InitDecl n = Default SrcPos String (Maybe String) (InitSet n)
+                | Symbol SrcPos String (Maybe String) (InitSet n)
+                | Range SrcPos String String (Maybe String) (InitSet n)
+                | Zero SrcPos (Maybe String) (InitSet n)
+                | Section SrcPos String (Maybe String) (InitSet n)
+                | Flag SrcPos ElfFlg (Maybe String) (InitSet n)
+                | Meta SrcPos String (Maybe String) (InitSet n)
   deriving (Show, Eq, Functor, Foldable)
 -}
-data InitSet n = ISExact SourcePos [Tag n]
+data InitSet n = ISExact SrcPos [Tag n]
   deriving (Show, Eq, Functor, Foldable)
            
 
@@ -178,20 +181,20 @@ data ElfFlg = Write | Alloc | Exec
 
 
 ---------------------------------------------   Group      --------------------------------------------
-data GroupDecl a n = GroupDecl SourcePos n [GroupParam n] [GroupParam n] a
+data GroupDecl a n = GroupDecl SrcPos n [GroupParam n] [GroupParam n] a
   deriving (Show, Eq, Functor, Foldable)
 
 instance Symbol (GroupDecl a QSym) where
   qsym (GroupDecl _ qn _ _ _) = qn
   pos  (GroupDecl p _ _ _ _) = p
 
-data GroupParam n = GroupParam SourcePos TagSpec n
+data GroupParam n = GroupParam SrcPos TagSpec n
   deriving (Show, Eq, Functor, Foldable)
 
-data ISA = Asm SourcePos Inst (Maybe [OpSpec])
+data ISA = Asm SrcPos Inst (Maybe [OpSpec])
   deriving (Show, Eq)
 
-data TagSpec = RD | RS1 | RS2 | RS3 | Imm | Off | Csr | Mem
+data TagSpec = RD | RS1 | RS2 | RS3 | Csr | Mem
   deriving (Show, Eq, Ord)
 
 data RF =

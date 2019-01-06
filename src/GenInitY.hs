@@ -62,7 +62,6 @@ reqYml (Object obj) (e:es, tags) = case M.lookup e obj of
 reqYml _ _ = error "Internal error processing requirements"
 
 mkField :: TagField QSym -> Value
-mkField (TFTag _ tag) = mkTagVal tag
 mkField tf = error $ "Illegal field value" ++ (show tf)
 
 mkTagVal :: Tag QSym -> Value
