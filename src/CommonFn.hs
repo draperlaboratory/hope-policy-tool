@@ -289,7 +289,6 @@ compactShowTag (Tag _ nm args) =
   intercalate " " $ (last $ qName nm) : map compactShowTagField args
 
 compactShowTagField :: TagField QSym -> String
-compactShowTagField (TFTag _ t) = compactShowTag t
 compactShowTagField (TFVar _ n) = last $ qName n
 compactShowTagField (TFNew _) = "new"
 compactShowTagField (TFAny _) = "_"

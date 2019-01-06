@@ -1,0 +1,453 @@
+{
+module PolicyLexer(Token(..), Located(..), getSrcPos,
+                   P(..), runP, lexer,
+                   SrcPos(..),alexGetSrcPos,alexError) where
+
+
+import Data.Char (isSpace, isDigit, ord)
+import Data.Word (Word8)
+import Control.Applicative as App (Applicative (..))
+import qualified Data.Bits
+
+import AST (SrcPos(..),ppSrcPos)
+}
+
+$digit          = 0-9
+$alpha          = [a-zA-Z]
+$doublequotable = $printable # \"
+$idchar         = [$alpha $digit _ \- \.]
+
+@number       = $digit+
+@doublequoted = $doublequotable*
+
+dpl :- 
+
+$white+                                ;
+
+-- This handles CPP line number updates
+^\# / { followedByNum }                { begin cpp_line_num }
+<cpp_line_num> @number                 { handleLineNum cpp_file_name }
+<cpp_file_name> \" @doublequoted \" .* { handleFileName }
+
+-- These handle comments.
+-- TODO: Why does changing [.\n] to [.\n]* cause infinite loops in
+-- files with comments.
+\/\*                                   { pushComment comment }
+<comment> \*\/                         { popComment comment }
+<comment> [.\n]                        ;
+\/\/ .*                                ;
+
+
+-- Tokens!
+<0> \(     { token TOParen }
+<0> \)     { token TCParen }
+<0> \[     { token TOBracket }
+<0> \]     { token TCBracket }
+<0> \{     { token TOCurly }
+<0> \}     { token TCCurly }
+<0> ==     { token TMatch }
+<0> \->    { token TArrow }
+<0> =      { token TAssign }
+<0> \^     { token TCompSeq }
+<0> \|     { token TCompExcl }
+<0> &      { token TCompModule }
+<0> \+     { token TPlus }
+<0> \-     { token TMinus }
+<0> _      { token TUnderscore }
+<0> \:     { token TColon }
+<0> \,     { token TComma }
+<0> \*     { token TStar }
+<0> \\\/   { token TUnion }
+<0> \/\\   { token TIntersection }
+
+<0> module   { token TModule }
+<0> import   { token TImport }
+<0> type     { token TType }
+<0> data     { token TData }
+<0> Int      { token TInt }
+<0> metadata { token TMetadata }
+<0> group    { token TGroup }
+<0> grp      { token TGrp }
+<0> RD       { token TRD }
+<0> RS1      { token TRS1 }
+<0> RS2      { token TRS2 }
+<0> RS3      { token TRS3 }
+<0> CSR      { token TCSR }
+<0> MEM      { token TMEM }
+<0> policy   { token TPolicy }
+<0> global   { token TGlobal }
+<0> fail     { token TFail }
+<0> new      { token TNew }
+<0> require  { token TRequire }
+<0> init     { token TInit }
+<0> __NO_CHECKS { token TNOCHECKS }
+
+<0> x0        { token TX0 }
+<0> x1        { token TX1 }
+<0> x2        { token TX2 }
+<0> x3        { token TX3 }
+<0> x4        { token TX4 }
+<0> x5        { token TX5 }
+<0> x6        { token TX6 }
+<0> x7        { token TX7 }
+<0> x8        { token TX8 }
+<0> x9        { token TX9 }
+<0> x10       { token TX10 }
+<0> x11       { token TX11 }
+<0> x12       { token TX12 }
+<0> x13       { token TX13 }
+<0> x14       { token TX14 }
+<0> x15       { token TX15 }
+<0> x16       { token TX16 }
+<0> x17       { token TX17 }
+<0> x18       { token TX18 }
+<0> x19       { token TX19 }
+<0> x20       { token TX20 }
+<0> x21       { token TX21 }
+<0> x22       { token TX22 }
+<0> x23       { token TX23 }
+<0> x24       { token TX24 }
+<0> x25       { token TX25 }
+<0> x26       { token TX26 }
+<0> x27       { token TX27 }
+<0> x28       { token TX28 }
+<0> x29       { token TX29 }
+<0> x30       { token TX30 }
+<0> x31       { token TX31 }
+
+
+<0> $alpha $idchar*  { tokenName TID }
+<0> \" @doublequoted \" { tokenStringLit }
+<0> @number { tokenNum TIntLit }
+
+{
+
+------------------------------------------------------------------------------
+-- Alex basics.
+--
+-- We're not using a wrapper because they don't keep track of source position
+-- information in the way we need (in particular, no file name).
+------------------------------------------------------------------------------
+-- | Encode a Haskell String to a list of Word8 values, in UTF8 format.
+utf8Encode :: Char -> [Word8]
+utf8Encode = map fromIntegral . go . ord
+ where
+  go oc
+   | oc <= 0x7f       = [oc]
+
+   | oc <= 0x7ff      = [ 0xc0 + (oc `Data.Bits.shiftR` 6)
+                        , 0x80 + oc Data.Bits..&. 0x3f
+                        ]
+
+   | oc <= 0xffff     = [ 0xe0 + (oc `Data.Bits.shiftR` 12)
+                        , 0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
+                        , 0x80 + oc Data.Bits..&. 0x3f
+                        ]
+   | otherwise        = [ 0xf0 + (oc `Data.Bits.shiftR` 18)
+                        , 0x80 + ((oc `Data.Bits.shiftR` 12) Data.Bits..&. 0x3f)
+                        , 0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
+                        , 0x80 + oc Data.Bits..&. 0x3f
+                        ]
+  
+alexMove :: SrcPos -> Char -> SrcPos
+alexMove (SP f l c) '\t' = SP f  l     (((c+alex_tab_size-1) `div` alex_tab_size)*alex_tab_size+1)
+alexMove (SP f l _) '\n' = SP f (l+1)   1
+alexMove (SP f l c) _    = SP f  l     (c+1)
+
+type AlexInput = (SrcPos,     -- current position,
+                  Char,         -- previous char
+                  [Word8],       -- pending bytes on current char
+                  String)       -- current input string
+   
+ignorePendingBytes :: AlexInput -> AlexInput
+ignorePendingBytes (p,c,_ps,s) = (p,c,[],s)
+
+alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
+alexGetByte (p,c,(b:bs),s) = Just (b,(p,c,bs,s))
+alexGetByte (_,_,[],[]) = Nothing
+alexGetByte (p,_,[],(c:s))  = let p' = alexMove p c
+                                  (b:bs) = utf8Encode c
+                              in p' `seq`  Just (b, (p', c, bs, s))
+  
+alexInputPrevChar :: AlexInput -> Char
+alexInputPrevChar (_p,c,_bs,_s) = c
+
+data PState = PState {
+        p_pos :: !SrcPos,  -- position at current input location
+        p_inp :: String,     -- the current input
+        p_chr :: !Char,      -- the character before the input
+        p_comment_depth :: !Int, -- the current depth of nested comments
+        p_bytes :: [Word8],
+        p_scd :: !Int        -- the current startcode
+    }
+
+-- Compile with -funbox-strict-fields for best results!
+
+runP :: FilePath -> String -> P a -> Either String a
+runP fn input__ (P f)
+   = case f (PState {p_pos = SP fn 0 0,
+                     p_inp = input__,
+                     p_chr = '\n',
+                     p_comment_depth = 0,
+                     p_bytes = [],
+                     p_scd = 0}) of Left msg -> Left msg
+                                    Right ( _, a ) -> Right a
+
+newtype P a = P { unP :: PState -> Either String (PState, a) }
+
+instance Functor P where
+  fmap f a = P $ \s -> case unP a s of
+                         Left msg -> Left msg
+                         Right (s', a') -> Right (s', f a')
+
+instance Applicative P where
+  pure a   = P $ \s -> Right (s, a)
+  fa <*> a = P $ \s -> case unP fa s of
+                         Left msg -> Left msg
+                         Right (s', f) -> case unP a s' of
+                                            Left msg -> Left msg
+                                            Right (s'', b) -> Right (s'', f b)
+
+instance Monad P where
+  m >>= k  = P $ \s -> case unP m s of
+                         Left msg -> Left msg
+                         Right (s',a) -> unP (k a) s'
+  return = App.pure
+
+alexGetInput :: P AlexInput
+alexGetInput
+ = P $ \s@PState{p_pos=pos,p_chr=c,p_bytes=bs,p_inp=inp__} ->
+        Right (s, (pos,c,bs,inp__))
+
+alexSetInput :: AlexInput -> P ()
+alexSetInput (pos,c,bs,inp__)
+ = P $ \s -> case s{p_pos=pos,p_chr=c,p_bytes=bs,p_inp=inp__} of
+                  state__@(PState{}) -> Right (state__, ())
+
+alexError :: String -> P a
+alexError message =
+  P $ \s -> Left $
+    ppSrcPos (p_pos s) ++ ": error:\n  " ++ message
+
+alexGetStartCode :: P Int
+alexGetStartCode = P $ \s@PState{p_scd=sc} -> Right (s, sc)
+
+alexSetStartCode :: Int -> P ()
+alexSetStartCode sc = P $ \s -> Right (s{p_scd=sc}, ())
+
+alexSetFile :: String -> P ()
+alexSetFile fn
+  = P $ \s@PState{p_pos=SP _ ln cl} ->
+        Right (s{p_pos=SP fn ln cl}, ())
+
+alexUpdateCommentDepth :: (Int -> Int) -> P Int
+alexUpdateCommentDepth f =
+  P $ \s@PState{p_comment_depth=d} ->
+     Right (s{p_comment_depth=f d}, f d)
+
+alexSetLine :: Int -> P ()
+alexSetLine ln
+  = P $ \s@PState{p_pos=SP fn _ _} ->
+        Right (s{p_pos=SP fn ln 0}, ())
+
+alexGetSrcPos :: P SrcPos
+alexGetSrcPos = P $ \s -> Right $ (s,p_pos s)
+
+alexMonadScan = do
+  inp__@(sp,_,_,_) <- alexGetInput
+  sc <- alexGetStartCode
+  case alexScan inp__ sc of
+    AlexEOF -> return $ L sp TEOF
+    AlexError _ -> alexError "scanning error during lexing"
+    AlexSkip  inp__' _len -> do
+        alexSetInput inp__'
+        alexMonadScan
+    AlexToken inp__' len action -> do
+        alexSetInput inp__'
+        action (ignorePendingBytes inp__) len
+
+type PAction result = AlexInput -> Int -> P result
+
+-- just ignore this token and scan another one
+-- skip :: PAction result
+skip _input _len = alexMonadScan
+
+-- ignore this token, but set the start code to a new value
+-- begin :: Int -> PAction result
+begin code _input _len = do alexSetStartCode code; alexMonadScan
+
+-- perform an action for this token, and set the start code to a new value
+andBegin :: PAction result -> Int -> PAction result
+(action `andBegin` code) input__ len = do
+  alexSetStartCode code
+  action input__ len
+
+returnToken :: (AlexInput -> Int -> token) -> PAction token
+returnToken t input__ len = return (t input__ len)
+
+token :: tk -> PAction (Located tk)
+token t (sp,_,_,_) _ = return (L sp t)
+
+tokenName :: (String -> tk) -> PAction (Located tk)
+tokenName t (sp,_,_,str) len = return $ L sp $ t $ take len str
+
+tokenNum :: (Int -> tk) -> PAction (Located tk)
+tokenNum t (sp,_,_,str) len = return $ L sp $ t $ read $ take len str
+
+tokenStringLit :: PAction (Located Token)
+tokenStringLit (sp,_,_,(_:str)) len =
+  return $ L sp $ TStringLit $ take (len - 2) str
+
+------------------------------------------------------------------------------
+-- DPL stuff
+------------------------------------------------------------------------------
+
+data Token =
+-- symbols
+    TOParen
+  | TCParen
+  | TOBracket
+  | TCBracket
+  | TOCurly
+  | TCCurly
+  | TMatch
+  | TArrow
+  | TAssign
+  | TCompSeq
+  | TCompExcl
+  | TCompModule
+  | TPlus
+  | TMinus
+  | TUnderscore
+  | TColon
+  | TComma
+  | TStar
+  | TUnion
+  | TIntersection
+
+-- keywords
+  | TModule
+  | TImport
+  | TType
+  | TData
+  | TInt
+  | TMetadata
+  | TGroup
+  | TGrp
+  | TRD
+  | TRS1
+  | TRS2
+  | TRS3
+  | TCSR
+  | TMEM
+  | TPolicy
+  | TGlobal
+  | TFail
+  | TNew
+  | TRequire
+  | TInit
+  | TNOCHECKS
+
+  -- opspecs
+  | TX0
+  | TX1
+  | TX2
+  | TX3
+  | TX4
+  | TX5
+  | TX6
+  | TX7
+  | TX8
+  | TX9
+  | TX10
+  | TX11
+  | TX12
+  | TX13
+  | TX14
+  | TX15
+  | TX16
+  | TX17
+  | TX18
+  | TX19
+  | TX20
+  | TX21
+  | TX22
+  | TX23
+  | TX24
+  | TX25
+  | TX26
+  | TX27
+  | TX28
+  | TX29
+  | TX30
+  | TX31
+
+  -- Other
+  | TID String
+  | TStringLit String
+  | TIntLit Int
+  | TEOF
+  deriving (Eq,Show)
+
+data Located a = L SrcPos a
+
+getSrcPos :: Located a -> SrcPos
+getSrcPos (L sp _) = sp
+
+followedByNum :: AlexAccPred a
+followedByNum _ _ _ (_, _, _, str) =
+  case afterSpace of
+    [] -> False
+    (d : _) -> isDigit d
+  where
+    afterSpace = dropWhile isSpace str
+
+handleLineNum :: Int -> PAction (Located Token)
+handleLineNum alexState inp@(_, _, _, str) len =
+  case parsedInts of
+    ((i,_):[]) -> do
+      alexSetLine i
+      begin alexState inp len
+    _ -> alexError "Lexing error: Expected integer in line number pragma."
+  where
+    parsedInts :: [(Int,String)]
+    parsedInts = reads str
+
+handleFileName :: PAction (Located Token)
+handleFileName inp@(_, _, _, str) len =
+  case str of
+    ('"' : str') -> do
+      alexSetFile (takeWhile ((/=) '"') str')
+      begin 0 inp len
+    _ -> alexError "Lexing error: Expected file name in line number pragma."
+
+pushComment :: Int -> PAction (Located Token)
+pushComment sc inp len = do
+  _ <- alexUpdateCommentDepth (+1)
+  begin sc inp len
+
+popComment :: Int -> PAction (Located Token)
+popComment sc inp len = do
+  d <- alexUpdateCommentDepth (+ (-1))
+  begin (if d == 0 then 0 else sc) inp len
+
+-- top level lexer interface
+lexer :: (Located Token -> P a) -> P a
+lexer f = alexMonadScan >>= f
+
+-- These two functions are useful for testing the lexer in isolation
+-- 
+-- scanner :: String -> Either String (Int,[Located Token])
+-- scanner str = runP "name" str $ do
+--   let loop i acc =
+--         do tok <- alexMonadScan; 
+--             if tok == TEOF
+--               then return (i,reverse acc)
+--               else do loop (i+1) (tok : acc)
+--   loop 0 []
+-- 
+-- main = do
+--   s <- getContents
+--   print (scanner s)
+
+}

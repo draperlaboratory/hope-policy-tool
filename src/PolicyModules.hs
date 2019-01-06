@@ -41,7 +41,9 @@ import WkTPolicy
 import AST
 import Generator
 import CommonFn
-import PolicyParser
+import CommonTypes
+import PolicyParser (polParse,moduleFile)
+import System.Directory (doesFileExist)
 import ErrorMsg
 
 
@@ -62,7 +64,7 @@ getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
                  IO [Either ErrMsg (ModuleDecl QSym)]
     getModule ms qmn | alreadyFound qmn ms = return ms
     getModule ms qmn = do
-      exists <- moduleExists opts qmn
+      exists <- doesFileExist $ moduleFile opts qmn
       if exists
         then do
         result <- polParse opts qmn
@@ -71,7 +73,8 @@ getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
                             foldlM getModule (m:ms) imports
           Left e -> error ("Error parsing module: " ++ e)
         else
-        error ("Module doesnt exist: " ++  dotName qmn)
+        error ("Couldn't find file corresponding to module at:\n   "
+               ++ moduleFile opts qmn)
 
     
 getModules _ _ = return [Left "Unable to locate top level module" ]

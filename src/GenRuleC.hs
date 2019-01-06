@@ -327,7 +327,6 @@ topPolicyPieces ms topMod pEx =
       case getPolicy ms topMod x of
         (modN, p@(PolicyDecl _ PLGlobal _ _)) -> Just ([(modN,p)],[])
         (modN, p@(PolicyDecl _ PLLocal _ _))  -> Just ([],[(modN,p)])
-        _ -> Nothing
     topPolicyVars (PECompPriority _ p1 p2) =
       case (gTop p1,topPolicyVars p2) of
         (Just gp1, Just (gp2,lp2)) -> Just (gp1 ++ gp2,lp2)
@@ -343,7 +342,6 @@ topPolicyPieces ms topMod pEx =
       case getPolicy ms topMod x of
         (modN, p@(PolicyDecl _ PLGlobal _ _)) -> Just [(modN,p)]
         (modN, (PolicyDecl _ PLLocal _ _)) -> Nothing
-        _ -> Nothing
     gTop (PECompPriority _ p1 p2) =
        case (gTop p1, gTop p2) of
          (Just gp1, Just gp2) -> Just (gp1 ++ gp2)
@@ -355,7 +353,6 @@ topPolicyPieces ms topMod pEx =
       case getPolicy ms topMod x of
         (modN, p@(PolicyDecl _ PLLocal _ _)) -> Just [(modN,p)]
         (modN, (PolicyDecl _ PLGlobal _ _)) -> Nothing
-        _ -> Nothing
     lTop (PECompModule _ p1 p2) =
        case (lTop p1, lTop p2) of
          (Just lp1, Just lp2) -> Just (lp1 ++ lp2)
@@ -874,8 +871,6 @@ translatePatterns ms mn mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],d
            ++ "at " ++ show p
     argBinding ts (idx,TFVar _ v) = Just (v,[cexp|($id:ts -> tags)[$int:idx]|])
     argBinding _ (_,TFAny _) = Nothing
-    argBinding _ (_,TFTag p _) =
-      error $ "Unsupported: complex tag argument at " ++ show p
 
 -- Arguments:
 --   - The name of the policy mask
@@ -1081,8 +1076,6 @@ translateTagSetEx ms mn (v1:vars) resVar varMap tagInfo (TSEIntersect _ tse1 tse
 
 --This builds a C expression corresponding to a tag argument field
 buildArgField :: ModSymbols -> ModName -> [(QSym,Exp)] -> (TagField QSym,(Word32,TypeDecl QSym)) -> Exp
-buildArgField _ _ _ (TFTag sp _,_) = error $
-  "Unsupported: complex tag field at " ++ show sp
 buildArgField _ _ varMap (TFVar sp v,_) =
   case lookup v varMap of
     Nothing -> error $

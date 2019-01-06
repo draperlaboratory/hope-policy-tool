@@ -26,14 +26,34 @@
 module CommonTypes where
 
 import Control.Monad.State.Lazy
-import Text.Megaparsec.String
-
-type SpaceParser = Parser ()
-type DPLParser = StateT SpaceParser Parser
 
 -- Rule result type: used in TargetDescription (maybe obsolete?)
 data Res = ResPC | ResRF | ResMem | ResCSR | ResNO
   deriving (Eq, Ord, Show, Bounded, Enum)
+
+data Options = Options  { optIR          :: Bool
+                        , optDebug       :: Bool
+                        , optRules       :: Bool
+                        , optProfile     :: Bool
+                        , optLogging     :: Bool
+                        , optModuleDir   :: String
+                        , optTargetDir   :: String
+                        , optOutputDir   :: String
+                        , optFileName    :: String
+                        }
+
+defaultOptions :: Options
+defaultOptions = Options { optDebug    = False
+                         , optRules = False
+                         , optProfile = False
+                         , optLogging = False
+                         , optIR  = False
+                         , optModuleDir     = ""
+                         , optTargetDir     = ""
+                         , optOutputDir     = ""
+                         , optFileName     = "policy"
+                         }
+
 
 -- Input vector care flags
 {-
