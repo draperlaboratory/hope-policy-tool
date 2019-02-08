@@ -30,7 +30,7 @@ module GenInitY where
 import Data.Yaml
 import qualified Data.HashMap.Lazy as M
 
-import Data.Text (Text, pack, splitOn)
+import Data.Text (Text, pack)
 
 import AST
 import Symbols
@@ -79,7 +79,6 @@ initSetFns ms us = map unique $ map combine everyTag
     -- convert a requirement into a Fn spec
     reqFn (mn, Init _ rqn is)   = [mkPolicyFn (setTags $ fmap (resolveQSym ms mn) is) rqn]
     mkPolicyFn tags rqn = (rqn, tags)
-    mkSystemFn (rqn, _) = (rqn, [])
     -- helpers to merge common Fn defs for each unique entity
     unique (n, ts) = (n, nubWith qsym $ sortWith qsym ts)
     combine = foldr merge ([],[])

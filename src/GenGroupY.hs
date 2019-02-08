@@ -56,7 +56,7 @@ writeGroupYFile yFile ms us = encodeFile yFile $ object [ "Groups"     .= groups
     groupByInstruction :: [[(Text, String)]]
     groupByInstruction = groupWith fst $ sortWith fst $ flatten $ groupList
     groupList :: [(ModName, GroupDecl [ISA] QSym)]
-    groupList = map (groupDecl ms) $ usedGroups us
+    groupList = usedGroups ms us
     flatten :: [(ModName, GroupDecl [ISA] QSym)] -> [(Text, String)]
     flatten = concatMap instGroups
     instGroups :: (ModName, GroupDecl [ISA] QSym) -> [(Text, String)]

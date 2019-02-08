@@ -25,8 +25,6 @@
  -}
 module CommonTypes where
 
-import Control.Monad.State.Lazy
-
 -- Rule result type: used in TargetDescription (maybe obsolete?)
 data Res = ResPC | ResRF | ResMem | ResCSR | ResNO
   deriving (Eq, Ord, Show, Bounded, Enum)
