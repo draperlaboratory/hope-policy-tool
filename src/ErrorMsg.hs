@@ -27,7 +27,6 @@
 module ErrorMsg where
 
 import Data.Either
-import Debug.Trace
 
 type ErrMsg = String
 
@@ -46,5 +45,5 @@ eitherErrs es = case lefts es of
 
 mayErr :: String -> Either ErrMsg a -> a
 mayErr msg e = case e of
-                 Left err | traceStack "" True -> error $ "Error: " ++ err ++ ", " ++ msg
+                 Left err -> error $ "Error: " ++ err ++ ", " ++ msg
                  Right a -> a

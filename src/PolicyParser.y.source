@@ -101,7 +101,7 @@ import System.FilePath ((</>),(<.>),joinPath)
   '__NO_CHECKS'    { L _ TNOCHECKS }
 
   QNAME            { L _ (TID _) }
-  INTLIT           { L _ (TIntLit $$) }
+  INTLIT           { L _ (TIntLit _) }
   STRINGLIT        { L _ (TStringLit $$) }
 
 
@@ -153,7 +153,7 @@ tagDataType :: { TagDataType }
   : 'Int' optionalSize    { TDTInt (getSrcPos $1) $2 }
 
 optionalSize :: { Maybe Int }
-  : '(' INTLIT ')'   { Just $2 }
+  : '(' INTLIT ')'   { Just (getIntLit $2) }
   | {- empty -}      { Nothing }
 
 ------------------------------------------------------------------------------
@@ -218,7 +218,7 @@ opspecs :: { [OpSpec] }
 
 opspec :: { OpSpec }
   : '*'              { AnyOp }
-  | INTLIT           { Const $ toInteger $1 }
+  | INTLIT           { Const $ toInteger (getIntLit $1) }
   | 'x0'             { Reg X0 }
   | 'x1'             { Reg X1 }
   | 'x2'             { Reg X2 }
@@ -321,6 +321,7 @@ fieldBody :: { TagField QSym }
   : 'new'            { TFNew (getSrcPos $1) }
   | QNAME            { TFVar (getSrcPos $1) (QVar [getName $1]) }
   | '_'              { TFAny (getSrcPos $1) }
+  | INTLIT           { TFInt (getSrcPos $1) (getIntLit $1) }
 
 tagExs :: { [TagEx QSym] }
   : {- empty -}        { [] }
@@ -398,6 +399,12 @@ getName (L _ t) = error $
 
 qualifyName :: Located Token -> [String]
 qualifyName t = separate $ getName t
+
+getIntLit :: Located Token -> Int
+getIntLit (L _ (TIntLit i)) = i
+getIntLit (L _ t) = error $
+     "Impossible: parser encountered non-int literal token ("
+  ++ show t ++ ") after checking for int literal in getIntLit."
 
 polParse :: Options -> ModName -> IO (Either ErrMsg (ModuleDecl QSym))
 polParse opts qmn =
