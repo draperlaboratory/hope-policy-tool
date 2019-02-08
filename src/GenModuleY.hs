@@ -26,12 +26,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module GenModuleY where
 
-import Data.List
 import Data.Yaml
 
-import Data.Text (Text, pack)
-
-import AST
 import Symbols
 import CommonFn
 

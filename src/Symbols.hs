@@ -30,7 +30,6 @@ module Symbols where
 
 import AST
 import CommonFn
-import Data.Either
 import Data.List (intercalate, nub)
 import Data.Maybe
 import ErrorMsg
@@ -106,23 +105,26 @@ getGroup ms mn qs = mayErr "Failed Group Lookup" $ lookupQSym ms groupSyms mn qs
 
 -- Use these Fns to filter the list of UsedSymbols down to a particular type
 -- e.g. Tags, Types, Groups, Policies
-usedTypes :: UsedSymbols -> UsedSymbols
-usedTypes us = filter isType us
+usedTypes :: ModSymbols -> UsedSymbols -> [(ModName, TypeDecl QSym)]
+usedTypes ms us = concatMap typeInfo us
   where
-    isType (_, QType _) = True
-    isType _ = False
+    typeInfo :: (ModName, QSym) -> [(ModName, TypeDecl QSym)]
+    typeInfo (mn, qt@(QType _)) = [getType ms mn qt]
+    typeInfo _ = []
 
-usedTags :: UsedSymbols -> UsedSymbols
-usedTags us = filter isTag us
+usedTags :: ModSymbols -> UsedSymbols -> [(ModName, TagDecl QSym)]
+usedTags ms us = concatMap tagInfo us 
   where
-    isTag (_, QTag _) = True
-    isTag _ = False
+    tagInfo :: (ModName, QSym) -> [(ModName, TagDecl QSym)]
+    tagInfo (mn, qt@(QTag _)) = [getTag ms mn qt]
+    tagInfo _ = []
 
-usedGroups :: UsedSymbols -> UsedSymbols
-usedGroups us = filter isGroup us
+usedGroups :: ModSymbols -> UsedSymbols -> [(ModName, GroupDecl [ISA] QSym)]
+usedGroups ms us = concatMap groupInfo us 
   where
-    isGroup (_, QGroup _) = True
-    isGroup _ = False
+    groupInfo :: (ModName, QSym) -> [(ModName, GroupDecl [ISA] QSym)]
+    groupInfo (mn, qt@(QGroup _)) = [getGroup ms mn qt]
+    groupInfo _ = []
 
 usedRequires :: ModSymbols -> UsedSymbols -> [(ModName, RequireDecl QSym)]
 usedRequires ms us = concatMap reqs mods
@@ -133,18 +135,6 @@ usedRequires ms us = concatMap reqs mods
       case lookup mn ms of
         Nothing -> []
         Just st -> zip (repeat mn) (requires st)
-
--- Use these functions when you are sure the thing you are looking for exists
--- andthe symbol has the correct type.
--- If it doesn't we call error with a message to terminate the program
-typeDecl :: ModSymbols -> (ModName, QSym) -> (ModName, TypeDecl QSym)
-typeDecl ms (mn, qt@(QType _)) = getType ms mn qt
-
-tagDecl :: ModSymbols -> (ModName, QSym) -> (ModName, TagDecl QSym)
-tagDecl ms (mn, qt@(QTag _)) = getTag ms mn qt
-
-groupDecl :: ModSymbols -> (ModName, QSym) -> (ModName, GroupDecl [ISA] QSym)
-groupDecl ms (mn, qt@(QGroup _)) = getGroup ms mn qt
 
 resolveQSym :: ModSymbols -> ModName -> QSym -> QSym
 resolveQSym ms startMod qs = qualifyQSym (moduleForQSym ms startMod qs) qs
@@ -159,7 +149,7 @@ moduleForQSym ms mn qs@(QPolicy _) =
   fst $ mayErr "Failed module lookup" $ lookupQSym ms policySyms mn qs
 moduleForQSym ms mn qs@(QGroup _) =
   fst $ mayErr "Failed module lookup" $ lookupQSym ms groupSyms mn qs
-moduleForQSym ms mn qs@(QVar _) = mn
+moduleForQSym _  mn (QVar _) = mn
   -- look up a qsym by finding the ST for its module and then using fn to select which Syms to lu
 
 -- Internal helper functions....
@@ -222,7 +212,7 @@ lookupSym sts st fn mn qs =
     imports :: [ModName]
     imports = importSyms st
     importedSyms :: (SymbolTable QSym -> [(QSym, a)]) -> [PartialResult a]
-    importedSyms fn = concatMap (lookupMod sts fn qs) imports
+    importedSyms stf = concatMap (lookupMod sts stf qs) imports
 
 -- This computes all the tags declared in the "tags" section of a module.  In
 -- the future world where we allow modules to examine but not modify tags from

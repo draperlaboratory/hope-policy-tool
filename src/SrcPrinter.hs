@@ -63,6 +63,7 @@ printPolicy (PolicyDecl _ _ pqn ex) = [fmt 1 (unqualSymStr pqn) ++ " = "] ++ (ma
     printPEx (PECompPriority _ lhs rhs) = printPEx lhs ++ ["^"] ++ printPEx rhs
     printPEx (PECompModule _ lhs rhs) = printPEx lhs ++ ["&"] ++ printPEx rhs
     printPEx (PEVar _ qn) = [printQN qn]
+    printPEx (PENoChecks _) = ["__NO_CHECKS"]
 
     printRuleClause :: RuleClause QSym -> [String]
     printRuleClause (RuleClause _ qn pats rr) = [ (printQN qn) ++
@@ -101,6 +102,7 @@ printPolicy (PolicyDecl _ _ pqn ex) = [fmt 1 (unqualSymStr pqn) ++ " = "] ++ (ma
     printTagField (TFVar _ var) = printQN var
     printTagField (TFNew _ ) = "new"
     printTagField (TFAny _ ) = "_"
+    printTagField (TFInt _ i) = show i
 
     printQN = qualSymStr
 {-

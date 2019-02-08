@@ -292,6 +292,7 @@ compactShowTagField :: TagField QSym -> String
 compactShowTagField (TFVar _ n) = last $ qName n
 compactShowTagField (TFNew _) = "new"
 compactShowTagField (TFAny _) = "_"
+compactShowTagField (TFInt _ i) = show i
 
 compactShowTagEx :: TagEx QSym -> String
 compactShowTagEx (TagEx _ t) = compactShowTag t

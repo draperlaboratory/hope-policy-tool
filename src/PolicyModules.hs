@@ -39,7 +39,6 @@ import CptPolicy
 import WkTPolicy
 -}
 import AST
-import Generator
 import CommonFn
 import CommonTypes
 import PolicyParser (polParse,moduleFile)
@@ -69,8 +68,8 @@ getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
         then do
         result <- polParse opts qmn
         case result of
-          m@(Right mn) -> let imports = getImports mn in
-                            foldlM getModule (m:ms) imports
+          m@(Right mnm) -> let imports = getImports mnm in
+                             foldlM getModule (m:ms) imports
           Left e -> error ("Error parsing module: " ++ e)
         else
         error ("Couldn't find file corresponding to module at:\n   "

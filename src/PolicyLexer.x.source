@@ -297,6 +297,9 @@ tokenNum t (sp,_,_,str) len = return $ L sp $ t $ read $ take len str
 tokenStringLit :: PAction (Located Token)
 tokenStringLit (sp,_,_,(_:str)) len =
   return $ L sp $ TStringLit $ take (len - 2) str
+tokenStringLit (_,_,_,[]) _ =
+  alexError
+    "Impossible: tokenStringLit encountered empty string during lexing."
 
 ------------------------------------------------------------------------------
 -- DPL stuff

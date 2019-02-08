@@ -106,25 +106,26 @@ main = do
     args <- getArgs
     (opts, topPolicyName) <- handle args
 
-    case checkErrs opts topPolicyName of
+    case checkErrs opts of
       [] -> do
         processMods opts topPolicyName
       msgs -> do
         hPutStrLn stderr $ unlines msgs
 
 
+optFldErrs :: [(Options -> String, [Char])]
 optFldErrs = [ (optModuleDir, "Error: missing -m <module directory path>")
              , (optTargetDir, "Error: missing -t <target directory path>")
              , (optOutputDir, "Error: missing -o <output directory path>")
              ]
 
-checkErrs  :: Options -> [String] -> [String]
-checkErrs opts topPolicyName = map snd $ filter isError optFldErrs
+checkErrs  :: Options -> [String]
+checkErrs opts = map snd $ filter isError optFldErrs
   where
-    isError (f,e) = f opts == ""
+    isError (f,_) = f opts == ""
 
 processMods :: Options -> [String] -> IO()
-processMods opts [] = do
+processMods _ [] = do
   hPutStrLn stderr "\nError no policy specified"
 processMods opts topPolicyName = do
     parsedMods <- getAllModules opts topPolicyName

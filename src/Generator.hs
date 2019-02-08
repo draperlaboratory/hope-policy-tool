@@ -27,11 +27,8 @@ module Generator where
 
 --import Numeric
 import System.FilePath
-import Control.Monad
 import System.IO
 import System.Directory
-
-import qualified Data.Set as S
 
 import AST
 import CommonFn
@@ -100,7 +97,7 @@ genFiles :: Options
          -> ModName
          -> Maybe (PolicyDecl QSym)
          -> IO ()
-genFiles opts allModSymTables policySyms requireSyms topMod policy = let
+genFiles opts allModSymTables polSyms requireSyms topMod policy = let
 
   {- No longer needed, 
     relevantModules :: S.Set ModName
@@ -110,8 +107,7 @@ genFiles opts allModSymTables policySyms requireSyms topMod policy = let
     symbols = filter (\(mn,_) -> S.member mn relevantModules) allModSymTables
     -}
 -- Use this instead
-    allUsedSyms = nubSymbols (policySyms ++ requireSyms)
-    relevantModules = S.fromList $ map fst allUsedSyms
+    allUsedSyms = nubSymbols (polSyms ++ requireSyms)
   
     tagSetHFile = path </> "include" </> (optFileName opts) ++ "_meta_set.h"
     tagSetCFile = path </> "src" </> (optFileName opts) ++ "_meta_set.c"
@@ -179,9 +175,3 @@ genFiles opts allModSymTables policySyms requireSyms topMod policy = let
     writeInitYFile initYFile allModSymTables allUsedSyms
     hPutStrLn stderr $ "Generating: " ++ entityYFile
     writeEntityYFile entityYFile targetPath
-
-
-dump stuff = do
-  hPutStrLn stderr "\nHere's some stuff:: " 
-  hPutStrLn stderr $ unlines $ map show stuff
-        

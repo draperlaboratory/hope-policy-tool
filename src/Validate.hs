@@ -26,7 +26,6 @@
 module Validate where
 
 import Data.Either
-import Debug.Trace
 
 import AST
 
@@ -45,15 +44,13 @@ locateMain ::
   -> Either [ErrMsg] (ModName, PolicyDecl QSym)
 locateMain [] _ = codingError "No policy case should be handled"
 locateMain (mainPolicy:[]) sts =
-  case lookupPolicy sts mod pol of
+  case lookupPolicy sts modNm pol of
     Left msg -> Left [msg]
     Right pd -> Right pd
   where
     policyQSym = QPolicy $ parseDotName mainPolicy
     pol = unqualQSym policyQSym
-    mod = modName policyQSym
-    mainModName = modSymStr policyQSym
-    mainPolicyName = unqualSymStr policyQSym
+    modNm = modName policyQSym
 locateMain _ _ = Left ["Too many policies on command line"]
 
 -- Validate that all symbols are reachable from main policy
@@ -78,7 +75,7 @@ validatePolicyDecl ::
   -> PolicyDecl QSym
   -> [(Either ErrMsg (ModName, QSym))]
   -> [(Either ErrMsg (ModName, QSym))]
-validatePolicyDecl ms mn pd@(PolicyDecl sp pl n pex) es =
+validatePolicyDecl ms mn pd@(PolicyDecl _ _ _ pex) es =
   validatePolicyEx ms mn pex (es ++ [Right (mn, qsym pd)])
 
 validatePolicyEx ::
@@ -87,15 +84,15 @@ validatePolicyEx ::
   -> PolicyEx QSym
   -> [(Either ErrMsg (ModName, QSym))]
   -> [(Either ErrMsg (ModName, QSym))]
-validatePolicyEx ms mn (PEVar sp x) es =
+validatePolicyEx ms mn (PEVar _ x) es =
   case lookupPolicy ms mn x of
     Right (mn', pd) -> validatePolicyDecl ms mn' pd es
     Left err -> es ++ [Left err]
-validatePolicyEx ms mn (PECompExclusive sp p1 p2) es = es2
+validatePolicyEx ms mn (PECompExclusive _ p1 p2) es = es2
   where
     es1 = validatePolicyEx ms mn p1 es
     es2 = validatePolicyEx ms mn p2 es1
-validatePolicyEx ms mn (PECompPriority sp p1 p2) es = es2
+validatePolicyEx ms mn (PECompPriority _ p1 p2) es = es2
   where
     es1 = validatePolicyEx ms mn p1 es
     es2 = validatePolicyEx ms mn p2 es1
@@ -129,13 +126,13 @@ validateRequires ::
   -> RequireDecl QSym
   -> [Either ErrMsg (ModName, QSym)]
   -> [Either ErrMsg (ModName, QSym)]
-validateRequires ms mn (Init sp e (ISExact _ ts)) es = foldr tagLookup es ts
+validateRequires ms mn (Init _ _ (ISExact _ ts)) es = foldr tagLookup es ts
   where
     tagLookup ::
          Tag QSym
       -> [Either ErrMsg (ModName, QSym)]
       -> [Either ErrMsg (ModName, QSym)]
-    tagLookup ts es = foldr (validateQSym ms mn) es ts
+    tagLookup tgs res = foldr (validateQSym ms mn) res tgs
 
 validateQSym ::
      ModSymbols
@@ -162,6 +159,7 @@ validateType ms mn qs es = foldr (validateQSym ms mn) es typs
   where
     (_, TagDecl _ _ typs) = getTag ms mn qs
 
+doLookup :: (a -> Either b (c,d)) -> a -> Either b (c,a)
 doLookup fn qs =
   case fn qs of
     Left err -> Left err

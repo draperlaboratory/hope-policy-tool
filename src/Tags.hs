@@ -30,7 +30,6 @@ module Tags (setTags,buildTagInfo,TagInfo(..)) where
 import CommonFn
 import AST
 import Symbols
-import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Word
 import Data.List (sort,foldl')
@@ -107,13 +106,13 @@ buildTagInfo ms allSyms =
            tiNumDataArgs,
            tiArrayLength = tiNumBitFields + tiNumDataArgs,
 
-           tiTagNames = map tagName declaredTags,
-           tiGroupNames = map tagName ogFakeTagDecls,
-           tiTagBitPositions = M.fromList $ zip (map tagName declaredTags)
+           tiTagNames = map mkTagName declaredTags,
+           tiGroupNames = map mkTagName ogFakeTagDecls,
+           tiTagBitPositions = M.fromList $ zip (map mkTagName declaredTags)
                                                 [minTagNumber..],
            tiTagArgInfo = dataArgInfo}
   where
-    tagName (mn, td) = qualifyQSym mn $ qsym td
+    mkTagName (mn, td) = qualifyQSym mn $ qsym td
     tiMaxTag,tiNumBitFields,tiNumDataArgs :: Word32
     tiMaxTag = minTagNumber + (fromIntegral $ length declaredTags) - 1
     tiNumBitFields = 1 + (div tiMaxTag 32)
@@ -127,7 +126,7 @@ buildTagInfo ms allSyms =
     declaredTags = sort $ actualDecls ++ ogFakeTagDecls
       where
         actualDecls :: [(ModName, TagDecl QSym)]
-        actualDecls = map (tagDecl ms) $ usedTags  allSyms
+        actualDecls = usedTags ms allSyms
 
     ogFakeTagDecls :: [(ModName, TagDecl QSym)]
     ogFakeTagDecls = mapMaybe grpDecls allSyms

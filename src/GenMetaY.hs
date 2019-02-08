@@ -44,6 +44,7 @@ writeMetaYFile
      -> IO ()
 writeMetaYFile yFile tagInfo = encodeFile yFile $ metaYml tagInfo
 
+metaYml :: TagInfo -> Value
 metaYml ti = object [ "MaxBit" .= (tiMaxTag ti)
                     , "NumberBits" .= (tiNumBitFields ti)
                     , "NumberFields" .= (tiNumDataArgs ti)
@@ -52,7 +53,7 @@ metaYml ti = object [ "MaxBit" .= (tiMaxTag ti)
 
 mkVal :: TagInfo -> QSym -> Value
 mkVal ti qSym = object [ "name"     .= (qualSymStr qSym)
-                       , "id"     .= (pos qSym)
+                       , "id"     .= (bitpos qSym)
                        , "group" .= isGrp qSym
                        , "fields"     .= (fieldCount qSym)
                        , "data"     .= (map mkFields $ fields qSym)
@@ -60,8 +61,8 @@ mkVal ti qSym = object [ "name"     .= (qualSymStr qSym)
   where
     isGrp (QGroup _) = True
     isGrp _ = False
-    pos qs = case M.lookup qs $ tiTagBitPositions ti of
-      Just id -> id
+    bitpos qs = case M.lookup qs $ tiTagBitPositions ti of
+      Just bp -> bp
       Nothing -> error "Encoding error in TagInfo"
     fieldCount qs = case M.lookup qs $ tiTagArgInfo ti of
       Just fs -> length fs
@@ -71,9 +72,9 @@ mkVal ti qSym = object [ "name"     .= (qualSymStr qSym)
       Nothing -> error "Encoding error in TagInfo"
 
 mkFields :: (Word32,TypeDecl QSym) -> Value
-mkFields (id, typ) = object [ "index"     .= id
-                            , "type" .= (fieldTyp typ)
-                            ]
+mkFields (idx, typ) = object [ "index"     .= idx
+                             , "type" .= (fieldTyp typ)
+                             ]
   where
     fieldTyp (TypeDecl _ _ tdt) = ts tdt
     ts :: TagDataType -> String
