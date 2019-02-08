@@ -98,15 +98,14 @@ instance Symbol (Tag QSym) where
 data TagField n = TFVar SrcPos n
                 | TFNew SrcPos
                 | TFAny SrcPos
+                | TFInt SrcPos Int
   deriving (Show, Eq, Ord, Functor, Foldable)
 
 ---------------------------------------------   Set        --------------------------------------------
 
 data TagSetPat n = TSPAny SrcPos
---                 | TSPVar SrcPos n
                  | TSPExact SrcPos [Tag n]
                  | TSPAtLeast SrcPos [TagEx n]
---                 | TSPVarSet SrcPos n (TagSetPat n)
   deriving (Show, Eq, Functor, Foldable)
 
 data TagSetEx n = TSEVar  SrcPos n
@@ -162,23 +161,10 @@ data PolicyEx n = PEVar SrcPos n
 
 data RequireDecl n = Init SrcPos [String] (InitSet n)
   deriving (Show, Eq, Functor, Foldable)
-{-
-data InitDecl n = Default SrcPos String (Maybe String) (InitSet n)
-                | Symbol SrcPos String (Maybe String) (InitSet n)
-                | Range SrcPos String String (Maybe String) (InitSet n)
-                | Zero SrcPos (Maybe String) (InitSet n)
-                | Section SrcPos String (Maybe String) (InitSet n)
-                | Flag SrcPos ElfFlg (Maybe String) (InitSet n)
-                | Meta SrcPos String (Maybe String) (InitSet n)
-  deriving (Show, Eq, Functor, Foldable)
--}
+
 data InitSet n = ISExact SrcPos [Tag n]
   deriving (Show, Eq, Functor, Foldable)
            
-
-data ElfFlg = Write | Alloc | Exec
-  deriving (Show, Eq)
-
 
 ---------------------------------------------   Group      --------------------------------------------
 data GroupDecl a n = GroupDecl SrcPos n [GroupParam n] [GroupParam n] a

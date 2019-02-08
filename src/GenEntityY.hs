@@ -37,6 +37,7 @@ writeEntityYFile yFile targetPath = do
   ents <- loadEnts targetPath
   writeFile yFile ents
 
+loadEnts :: FilePath -> IO [Char]
 loadEnts targetPath = do
   soc <- readFile socFile
   isa <- readFile isaFile
