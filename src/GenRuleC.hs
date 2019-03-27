@@ -518,7 +518,7 @@ translateTopPolicy debug profile ms us tinfo topMod (Just (PolicyDecl _ _ _ p)) 
         int eval_policy ($params:policyInputParams) {
           int $id:resultVar = $id:policyIFailName;
 
-          $stms:topDebugStms
+          $items:topDebugStms
 
           $stms:globalChecks
           $stms:localChecks
@@ -535,6 +535,9 @@ translateTopPolicy debug profile ms us tinfo topMod (Just (PolicyDecl _ _ _ p)) 
 
     resultVar :: String
     resultVar = "evalResult"
+
+    debugBufVar :: String
+    debugBufVar = "debugMsg"
 
     ogMap :: OpGroupMap
     ogMap = buildOGMap ms us
@@ -566,7 +569,7 @@ translateTopPolicy debug profile ms us tinfo topMod (Just (PolicyDecl _ _ _ p)) 
         globalCheck (_, pol) = [cstms|
           $stms:(policyDebugStmsPre pol);
           $id:resultVar = $id:(singlePolicyEvalName pol)($args:policyInputArgs);
-          $stms:(policyDebugStmsPost pol);
+          $stms:(policyDebugStmsPost);
           if($id:resultVar == $id:policySuccessName) {
             return $id:policySuccessName;
           } else if($id:resultVar == $id:policyEFailName) {
@@ -582,34 +585,37 @@ translateTopPolicy debug profile ms us tinfo topMod (Just (PolicyDecl _ _ _ p)) 
         localCheck (_, pol) = [cstms|
           $stms:(policyDebugStmsPre pol);
           $id:resultVar = $id:(singlePolicyEvalName pol)($args:policyInputArgs);
-          $stms:(policyDebugStmsPost pol);
+          $stms:(policyDebugStmsPost);
           if($id:resultVar != $id:policySuccessName) {
             return $id:resultVar;
           }
         |]
 
-    topDebugStms :: [Stm]
+    topDebugStms :: [BlockItem]
     topDebugStms =
        if debug then
-         [cstms|
-           debug_msg($id:contextArgName, "Policy input:\n");
+         [citems|
+           char $id:debugBufVar[80];
+           snprintf($id:debugBufVar, 80,
+                    "\nNew Instruction. PC: 0x%lx\n", $id:contextArgName->epc);
+           debug_msg($id:contextArgName, $id:debugBufVar);
+           debug_msg($id:contextArgName, "  Policy input:\n");
            debug_operands($id:contextArgName, $id:operandsArgName);
-           debug_msg($id:contextArgName, "\n");
          |]
        else []
 
     policyDebugStmsPre :: PolicyDecl QSym -> [Stm]
     policyDebugStmsPre pol =
       if debug then
-        [cstms|debug_msg($id:contextArgName, $string:("\nEvaluating: " ++ (policyDotName pol) ++ "\n"));|]
+        [cstms|debug_msg($id:contextArgName, $string:("  Evaluating policy: " ++ (policyDotName pol) ++ "\n"));|]
       else []
     
-    policyDebugStmsPost :: PolicyDecl QSym -> [Stm]
-    policyDebugStmsPost pol =
+    policyDebugStmsPost :: [Stm]
+    policyDebugStmsPost =
       if debug then
-        [cstms|debug_msg($id:contextArgName, $string:("Result " ++ (policyDotName pol) ++ ": "));
+        [cstms|debug_msg($id:contextArgName, "    Result: ");
                debug_status($id:contextArgName, $id:resultVar);
-               debug_msg($id:contextArgName, "\n");
+               debug_msg($id:contextArgName, "    Metadata Updates:\n");
                debug_results($id:contextArgName, $id:resultsArgName);|]
       else []
 
@@ -731,7 +737,7 @@ translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogr
     debugPrints =
       if dbg then
         [cstms|
-          debug_msg($id:contextArgName, $string:("rule match: " ++ (compactShowRule rc) ++ "\n"));
+          debug_msg($id:contextArgName, $string:("    Rule Matched: " ++ (compactShowRule rc) ++ "\n"));
         |]
       else []
     ruleEvalLog :: [Stm]
@@ -1103,6 +1109,7 @@ cHeader _debug _profile = [ "#include \"policy_meta.h\""
                          , "#include \"policy_meta_set.h\""
                          , "#include <stdbool.h>"
                          , "#include <stdint.h>"
+                         , "#include <stdio.h>"
                          , "#include <inttypes.h>"
                          , "#include <limits.h>"
                          , "#include <string.h>"
