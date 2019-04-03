@@ -12,3 +12,15 @@ install:
 
 clean:
 	stack clean
+
+parsers: alex happy
+
+happy: src/PolicyParser.y.source
+	cp src/PolicyParser.y.source src/PolicyParser.y
+	happy -o src/PolicyParser.hs src/PolicyParser.y
+	rm src/PolicyParser.y
+
+alex: src/PolicyLexer.x.source
+	cp src/PolicyLexer.x.source src/PolicyLexer.x
+	alex -o src/PolicyLexer.hs src/PolicyLexer.x
+	rm src/PolicyLexer.x

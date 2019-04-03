@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-missing-signatures #-}
 {-# LANGUAGE CPP #-}
-{-# LINE 1 "PolicyLexer.x" #-}
+{-# LINE 1 "src/PolicyLexer.x" #-}
 
 module PolicyLexer(Token(..), Located(..), getSrcPos,
                    P(..), runP, lexer,
@@ -26543,7 +26543,7 @@ alex_actions = array (0 :: Int, 139)
   , (0,alex_action_83)
   ]
 
-{-# LINE 123 "PolicyLexer.x" #-}
+{-# LINE 123 "src/PolicyLexer.x" #-}
 
 
 ------------------------------------------------------------------------------
