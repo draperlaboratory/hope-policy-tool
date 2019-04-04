@@ -34,6 +34,7 @@ import AST
 import Symbols
 import Tags
 import CommonFn
+import SrcPrinter
 
 import Language.C.Syntax
 import Language.C.Quote.GCC
@@ -737,15 +738,20 @@ translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogr
     debugPrints =
       if dbg then
         [cstms|
-          debug_msg($id:contextArgName, $string:("    Rule Matched: " ++ (compactShowRule rc) ++ "\n"));
+          debug_msg($id:contextArgName, $string:("    Rule Matched: " ++ (printRuleClause rc) ++ "\n"));
         |]
       else []
+
     ruleEvalLog :: [Stm]
     ruleEvalLog =
         [cstms|
-          logRuleEval($string:(qualifiedShowRule pd rc));
+          logRuleEval($string:(qualifiedShowRule pd));
         |]
 
+    qualifiedShowRule :: PolicyDecl QSym -> String
+    qualifiedShowRule p = policyDotName p ++ ":" ++ printRuleClause rc
+
+          
 -- Args:
 --   - The policy mask
 --   - The tag encoding list
@@ -883,6 +889,10 @@ translatePatterns ms mn mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],d
     argBinding _ (_,TFInt p _) =
       error $ "Unsupported: Specific integer in tag field pattern at "
            ++ ppSrcPos p
+    argBinding _ (_,TFBinOp p b _ _) =
+      error $ "Illegal: Attempt to create use binary operator \""
+           ++ printTagFieldBinOp b ++ "\" in pattern "
+           ++ "at " ++ ppSrcPos p
 
 -- Arguments:
 --   - The name of the policy mask
@@ -1099,7 +1109,10 @@ buildArgField ms mn _ (TFNew _,(_,typ)) =
 buildArgField _ _ _ (TFAny sp,_) = error $
   "Illegal: wildcard in tag argument definition at " ++ ppSrcPos sp
 buildArgField _ _ _ (TFInt sp _,_) = error $
-     "Unsupported: Specific integer provided as tag field argument at "
+     "Unimplemented: Specific integer provided as tag field argument at "
+  ++ ppSrcPos sp
+buildArgField _ _ _ (TFBinOp sp _ _ _,_) = error $
+     "Unimplemented: Binary operation used in tag field argument at "
   ++ ppSrcPos sp
 
 -- top of policy_rule.c

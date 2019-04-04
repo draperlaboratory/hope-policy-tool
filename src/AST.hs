@@ -99,7 +99,15 @@ data TagField n = TFVar SrcPos n
                 | TFNew SrcPos
                 | TFAny SrcPos
                 | TFInt SrcPos Int
+                | TFBinOp SrcPos TagFieldBinOp (TagField n) (TagField n)
   deriving (Show, Eq, Ord, Functor, Foldable)
+
+data TagFieldBinOp = TFBOPlus
+                   | TFBOMinus
+                   | TFBOTimes
+                   | TFBODiv
+                   | TFBOMod
+  deriving (Show, Eq, Ord)
 
 ---------------------------------------------   Set        --------------------------------------------
 
