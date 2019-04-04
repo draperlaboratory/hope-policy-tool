@@ -15,6 +15,8 @@ import System.FilePath ((</>),(<.>),joinPath)
 
 %name parseModule module
 
+%left '+' '-'
+%left '*' '/' '%'
 %left '&' '^' '|'
 
 %left '/\\' '\\/' '['
@@ -34,6 +36,8 @@ import System.FilePath ((</>),(<.>),joinPath)
   '&'              { L _ TCompModule }
   '+'              { L _ TPlus }
   '-'              { L _ TMinus }
+  '/'              { L _ TDiv }
+  '%'              { L _ TMod }
   '_'              { L _ TUnderscore }
   ':'              { L _ TColon }
   ','              { L _ TComma }
@@ -306,22 +310,24 @@ tag :: { Tag QSym }
   | '(' tagBody ')'  { $2 }
 
 tagBody :: { Tag QSym }
-  : QNAME fields     { Tag (getSrcPos $1) (QTag [getName $1]) $2 }
+  : QNAME fields     { Tag (getSrcPos $1) (QTag [getName $1]) (reverse $2) }
 
 fields :: { [TagField QSym] }
   : {- empty -}      { [] }
   | fields field     { $2 : $1 }
 
--- optional parens
-field :: { TagField QSym }
-  : fieldBody          { $1 }
-  | '(' fieldBody ')'  { $2 }
 
-fieldBody :: { TagField QSym }
-  : 'new'            { TFNew (getSrcPos $1) }
-  | QNAME            { TFVar (getSrcPos $1) (QVar [getName $1]) }
-  | '_'              { TFAny (getSrcPos $1) }
-  | INTLIT           { TFInt (getSrcPos $1) (getIntLit $1) }
+field :: { TagField QSym }
+  : 'new'           { TFNew (getSrcPos $1) }
+  | QNAME           { TFVar (getSrcPos $1) (QVar [getName $1]) }
+  | '_'             { TFAny (getSrcPos $1) }
+  | INTLIT          { TFInt (getSrcPos $1) (getIntLit $1) }
+  | '(' field ')'   { $2 }
+  | field '+' field { TFBinOp (getSrcPos $2) TFBOPlus $1 $3 }
+  | field '-' field { TFBinOp (getSrcPos $2) TFBOMinus $1 $3 }
+  | field '*' field { TFBinOp (getSrcPos $2) TFBOTimes $1 $3 }
+  | field '/' field { TFBinOp (getSrcPos $2) TFBODiv $1 $3 }
+  | field '%' field { TFBinOp (getSrcPos $2) TFBOMod $1 $3 }
 
 tagExs :: { [TagEx QSym] }
   : {- empty -}        { [] }

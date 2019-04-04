@@ -53,6 +53,8 @@ $white+                                ;
 <0> &      { token TCompModule }
 <0> \+     { token TPlus }
 <0> \-     { token TMinus }
+<0> \/     { token TDiv }
+<0> \%     { token TMod }
 <0> _      { token TUnderscore }
 <0> \:     { token TColon }
 <0> \,     { token TComma }
@@ -321,6 +323,8 @@ data Token =
   | TCompModule
   | TPlus
   | TMinus
+  | TDiv
+  | TMod
   | TUnderscore
   | TColon
   | TComma
