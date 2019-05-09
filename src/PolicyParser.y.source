@@ -64,6 +64,8 @@ import System.FilePath ((</>),(<.>),joinPath)
   'policy'         { L _ TPolicy }
   'global'         { L _ TGlobal }
   'fail'           { L _ TFail }
+  'allow'          { L _ TAllow }
+  'with'           { L _ TWith }
   'new'            { L _ TNew }
   'require'        { L _ TRequire }
   'init'           { L _ TInit }
@@ -100,7 +102,6 @@ import System.FilePath ((</>),(<.>),joinPath)
   'x29'            { L _ TX29 }
   'x30'            { L _ TX30 }
   'x31'            { L _ TX31 }
-
 
   '__NO_CHECKS'    { L _ TNOCHECKS }
 
@@ -344,6 +345,9 @@ tagMod :: { SrcPos -> Tag QSym -> TagEx QSym }
 
 ruleResult :: { RuleResult QSym }
   : '->' 'fail' STRINGLIT    { RRFail (getSrcPos $2) $3 }
+  | '->' 'allow'             { RRUpdate (getSrcPos $2) [] }
+  | '->' 'allow' 'with' boundGroupExs
+                             { RRUpdate (getSrcPos $2) $4 }
   | '->' boundGroupExs       { RRUpdate (getSrcPos $1) $2 }
 
 boundGroupExs :: { [BoundGroupEx QSym] }

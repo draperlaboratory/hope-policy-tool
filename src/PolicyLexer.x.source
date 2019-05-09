@@ -79,6 +79,8 @@ $white+                                ;
 <0> policy   { token TPolicy }
 <0> global   { token TGlobal }
 <0> fail     { token TFail }
+<0> allow    { token TAllow }
+<0> with     { token TWith }
 <0> new      { token TNew }
 <0> require  { token TRequire }
 <0> init     { token TInit }
@@ -350,6 +352,8 @@ data Token =
   | TPolicy
   | TGlobal
   | TFail
+  | TAllow
+  | TWith
   | TNew
   | TRequire
   | TInit

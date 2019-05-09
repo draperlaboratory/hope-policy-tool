@@ -41,7 +41,7 @@ import Language.C.Quote.GCC
 
 import Data.Loc (noLoc)
 
-import Data.List (foldl')
+import Data.List (foldl',find)
 import Data.Word
 import Data.Array.Unboxed (elems)
 import Data.Array.ST
@@ -271,42 +271,59 @@ buildOGMap ms us = foldl' (flip $ uncurry M.insert)
     paramNames :: GroupParam QSym -> (QSym,TagSpec)
     paramNames (GroupParam _ ts qs) = (qs,ts)
 
--- patOperandLookup and expOperandLookup do the actual work of taking a QSym
--- that appears in a rule on the left hand of an equality and turning it into a
--- C identifier.  For patterns, this will be the name of a pointer to the tag
--- set being examined.  For rules, it is the index into the array (NOTE: this is
--- a macro, not a variable name).
+-- patOperands and expOperands compute a map from the operand names that
+-- appear in a rule to the C identifier for the relevant tag set.  For
+-- patterns, this will be the name of a pointer to the tag set being examined.
+-- For rules, it is the index into the array (NOTE: this is a macro, not a
+-- variable name).  unknownOGMsg is a helper to avoid duplication of error
+-- messages.
 --
 -- Args:
 --  - The opGroupMap (computed by buildOGMap)
 --  - The opgroup's name
---  - the operand's name
-patOperandLookup :: OpGroupMap -> QSym -> QSym -> Maybe String
-patOperandLookup _ _ (QVar ["env"])  = Just pcArgName
-patOperandLookup _ _ (QVar ["code"]) = Just ciArgName
-patOperandLookup ogMap og operand = do
-  ogNames <- M.lookup og ogMap
-  tspec <- lookup operand $ ognPats ogNames
-  case tspec of
-    RS1 -> return op1ArgName
-    RS2 -> return op2ArgName
-    RS3 -> return op3ArgName
-    Mem -> return memArgName
-    Csr -> return op2ArgName
-    _ -> error $ "Internal error: " ++ show tspec
-              ++ " in patOperandLookup (CJC didn't know what to do here)."
+unknownOGMsg :: QSym -> String
+unknownOGMsg og = "Error: unknown opgroup " ++ tagString og ++ ".\n"
 
-expOperandLookup :: OpGroupMap -> QSym -> QSym -> Maybe String
-expOperandLookup _ _ (QVar ["env"])  = Just resultsPC
-expOperandLookup _ _ (QVar ["code"]) = Nothing
-expOperandLookup ogMap og operand    = do
-  ogNames <- M.lookup og ogMap
-  tspec <- lookup operand $ ognExps ogNames
-  case tspec of
-    RD -> Just resultsRD
-    Mem -> Just resultsRD
-    Csr -> Just resultsCSR
-    _ -> Nothing
+patOperands :: OpGroupMap -> QSym -> [(QSym, String)]
+patOperands ogMap og =
+  case M.lookup og ogMap of
+    Nothing -> error $ unknownOGMsg og
+    Just ogNames -> standardOperands
+                 ++ (map (\(qs,ts) -> (qs, tagSpecPatName ts))
+                       $ ognPats ogNames)
+  where
+    tagSpecPatName :: TagSpec -> String
+    tagSpecPatName RS1 = op1ArgName
+    tagSpecPatName RS2 = op2ArgName
+    tagSpecPatName RS3 = op3ArgName
+    tagSpecPatName Mem = memArgName
+    tagSpecPatName Csr = op2ArgName
+    tagSpecPatName ts =
+      error $ "Error: illegal tag spec " ++ show ts
+          ++ " in LHS of opgroup definition of " ++ tagString og ++ ".\n"
+
+    standardOperands :: [(QSym, String)]
+    standardOperands = [(QVar ["env"],pcArgName),
+                        (QVar ["code"],ciArgName)]
+
+expOperands :: OpGroupMap -> QSym -> [(QSym, String)]
+expOperands ogMap og =
+  case M.lookup og ogMap of
+    Nothing -> error $ unknownOGMsg og
+    Just ogNames -> standardOperands
+                 ++ (map (\(qs,ts) -> (qs, tagSpecPatName ts))
+                       $ ognExps ogNames)
+  where
+    tagSpecPatName :: TagSpec -> String
+    tagSpecPatName RD = resultsRD
+    tagSpecPatName Mem = resultsRD
+    tagSpecPatName Csr = resultsCSR
+    tagSpecPatName ts =
+      error $ "Error: illegal tag spec " ++ show ts
+          ++ " in RHS of opgroup definition of " ++ tagString og ++ ".\n"
+    
+    standardOperands :: [(QSym, String)]
+    standardOperands = [(QVar ["env"],resultsPC)]
 
 -- This function checks that the top-level declaration has the form
 --    gp_1 ^ ... ^ gp_n ^ (lp_1 & ... & lp_k)
@@ -717,22 +734,25 @@ translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogr
    |]
   where
     qualifiedOpGrp :: QSym
-    qualifiedOpGrp = resolveQSym ms modN ogrp 
+    qualifiedOpGrp = resolveQSym ms modN ogrp
+
     qualifiedOpGrpMacro :: QSym
     qualifiedOpGrpMacro = qualifyQSym (moduleForQSym ms modN ogrp) $ groupPrefix ogrp
     mask = policyMaskName pd
+
     patExp :: Exp
     boundNames :: [(QSym,Exp)]
-    (patExp,boundNames) = translatePatterns ms modN mask tagInfo oprLookup rpat
+    (patExp,boundNames) =
+      translatePatterns ms modN mask tagInfo operandIDs rpat
       where
-        oprLookup :: QSym -> Maybe String
-        oprLookup = patOperandLookup ogMap qualifiedOpGrp
+        operandIDs :: [(QSym, String)]
+        operandIDs = patOperands ogMap qualifiedOpGrp
 
     ruleResult :: [BlockItem]
     ruleResult = translateRuleResult ms modN mask oprLookup boundNames tagInfo pass rres
       where
-        oprLookup :: QSym -> Maybe String
-        oprLookup = expOperandLookup ogMap qualifiedOpGrp
+        oprLookup :: [(QSym,String)]
+        oprLookup = expOperands ogMap qualifiedOpGrp
 
     debugPrints :: [Stm]
     debugPrints =
@@ -753,9 +773,11 @@ translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogr
 
           
 -- Args:
+--   - The symbol map
+--   - The module name
 --   - The policy mask
 --   - The tag encoding list
---   - A function that takes operand names to C identifiers
+--   - An association list mapping operand names to C identifiers
 --   - patterns
 -- Results:
 --   - A C expression that evaluates to "1" if the pattern
@@ -768,10 +790,11 @@ translatePatterns :: ModSymbols
                   -> ModName
                   -> String
                   -> TagInfo
-                  -> (QSym -> Maybe String)
+                  -> [(QSym,String)]
                   -> [BoundGroupPat QSym]
                   -> (Exp,[(QSym,Exp)])
-translatePatterns ms mn mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],defaultEnv) pats
+translatePatterns ms mn mask tagInfo ogmap pats =
+  foldl' patternAcc ([cexp|1|],defaultEnv) pats
   where
     -- default binding for the env var, syntax sugar to allow it to be used in result
     -- without having been defined
@@ -803,9 +826,9 @@ translatePatterns ms mn mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],d
     -- tag arguments, which are handled by the caller.
     translateBGPat :: BoundGroupPat QSym -> (Exp,[(QSym,Exp)])
     translateBGPat (BoundGroupPat loc tsID pat) =
-      case ogmap tsID of
-        Nothing -> error $ "No opgroup binding for operand " ++ show tsID
-                        ++ " at " ++ ppSrcPos loc
+      case lookup tsID ogmap of
+        Nothing -> error $ "No opgroup binding for operand \"" ++ show tsID
+                        ++ "\" at " ++ ppSrcPos loc
         Just tsName -> translateTSPat tsID tsName (fmap (resolveQSym ms mn) pat)
         
     -- Give this the name of a pointer to a meta_set_t, and a TagSetPattern, and
@@ -895,8 +918,10 @@ translatePatterns ms mn mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],d
            ++ "at " ++ ppSrcPos p
 
 -- Arguments:
+--   - The module symbols
+--   - The module name
 --   - The name of the policy mask
---   - A function that associates operands to C macros based on the opgroup.
+--   - An association list mapping operands to C macros based on the opgroup.
 --   - A mapping from policy variables to C expressions.
 --   - The name of the result variable
 --   - The result to be translated.
@@ -905,19 +930,60 @@ translatePatterns ms mn mask tagInfo ogmap pats = foldl' patternAcc ([cexp|1|],d
 --     policyEFail from the current function if the rule result is failure.  If
 --     the rule result is to generate new tags, they'll assign new tags into the
 --     result array and return policySuccess from the current function.
-translateRuleResult :: ModSymbols -> ModName -> String -> (QSym -> Maybe String) -> [(QSym,Exp)]
-                    -> TagInfo -> String -> RuleResult QSym -> [BlockItem]
+translateRuleResult :: ModSymbols -> ModName -> String -> [(QSym,String)]
+                    -> [(QSym,Exp)] -> TagInfo -> String -> RuleResult QSym
+                    -> [BlockItem]
 -- handle the explicit failure case by printing a message and return failure                    
 translateRuleResult _ _ _ _ _ _ _ (RRFail _ msg) = [citems|
                                                   $id:contextArgName->fail_msg = $string:msg;
                                                   return $id:policyEFailName;|]
-translateRuleResult ms topMod mask ogMap varMap tagInfo pass (RRUpdate _ updates) =
-     (concatMap (translateBoundGroupEx ms topMod mask ogMap varMap tagInfo) updates)
-  ++ [ [citem|return $id:pass;|] ]
+translateRuleResult ms topMod mask ogMap varMap tagInfo pass (RRUpdate sp updates) =
+  case missingOperands of
+    Left errMsg -> error errMsg
+    Right defaultBlocks ->
+         defaultBlocks
+      ++ (concatMap (translateBoundGroupEx ms topMod mask ogMap varMap tagInfo)
+                    updates)
+      ++ [ [citem|return $id:pass;|] ]
+  where
+    -- This implements a check that the rule provides updated metadata for any
+    -- memory/register updated by the instruction, according to the opgroup.
+    -- The user is allowed to leave off the result PC metadata, in which case
+    -- we assume it does not change.  We compute either an error message or
+    -- some BlockItems (which implement the default case for env if it is
+    -- necessary).
+    missingOperands :: Either String [BlockItem]
+    missingOperands = case (otherMissing,envMissing) of
+      -- Missing operand other than env.
+      (Just (qs,_),_) -> Left $
+           "Rule is missing updated metadata for operand \"" ++ tagString qs
+        ++ "\", which is requird by its opgroup (" ++ ppSrcPos sp ++ ").\n"
+      -- Missing no operands.
+      (Nothing,False) -> Right []
+      -- Missing only env.
+      (Nothing,True)  -> Right $
+        translateBoundGroupEx ms topMod mask ogMap varMap tagInfo $
+            BoundGroupEx sp (QVar ["env"]) (TSEVar sp (QVar ["env"]))
+        -- CJC: This feels a little hacky because it depends on (QVar ["env"])
+        -- to mean the right thing.  But I definitely don't want to duplicate
+        -- the functionality of translateBoundGroupEx.  Hmm.
+
+    updatedOperands :: [QSym]
+    updatedOperands = map (\(BoundGroupEx _ qs _) -> qs) updates
+
+    envMissing :: Bool
+    envMissing = not $ (QVar ["env"]) `elem` updatedOperands
+
+    otherMissing :: Maybe (QSym,String)
+    otherMissing = find (\(qs,_) -> not $ qs == (QVar ["env"])
+                                       || qs `elem` updatedOperands)
+                        ogMap
 
 -- Arguments:
+--   - The module symbols
+--   - The module name
 --   - The name of the policy mask
---   - A function that associates operands to C macros based on the opgroup.
+--   - An association list mapping operands to C macros based on the opgroup.
 --   - A mapping from policy tag set variables to C tag set variables.
 --   - The BoundGroupEx to be translated.
 -- Results:
@@ -926,10 +992,11 @@ translateRuleResult ms topMod mask ogMap varMap tagInfo pass (RRUpdate _ updates
 --
 -- This relies on a recursive helper function that descends through the tag set
 -- expression and roughly implements the judgment from the pdf.
-translateBoundGroupEx :: ModSymbols -> ModName -> String -> (QSym -> Maybe String) -> [(QSym,Exp)]
-                      -> TagInfo -> BoundGroupEx QSym -> [BlockItem]
+translateBoundGroupEx :: ModSymbols -> ModName -> String -> [(QSym,String)]
+                      -> [(QSym,Exp)] -> TagInfo -> BoundGroupEx QSym
+                      -> [BlockItem]
 translateBoundGroupEx ms mn mask ogMap varMap tagInfo (BoundGroupEx loc opr tse) =
-  case ogMap opr of
+  case lookup opr ogMap  of
     Nothing -> error $ "Rule result uses invalid operand " ++ show opr
                         ++ "(" ++ ppSrcPos loc ++ ")"
     Just resPositionName ->
