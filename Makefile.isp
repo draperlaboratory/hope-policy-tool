@@ -5,7 +5,7 @@
 ISP_PREFIX ?= /opt/isp/
 
 all:
-	stack build --allow-different-user --ghc-options="-Wall"
+	stack build --allow-different-user --ghc-options="-Wall" --install-ghc
 
 install:
 	stack install --local-bin-path=$(ISP_PREFIX)/bin/ --ghc-options="-Wall"
