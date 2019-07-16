@@ -60,17 +60,10 @@ import qualified Data.Map as M
 --resultsSizeMacro, resultsPCMacro, resultsRDMacro, resultsCSRMacro :: String
 --resultsSizeMacro = "RULE_DEST_COUNT"
 
-policySuccessName, policyIFailName, policyEFailName, policyErrorName :: String
-policySuccessName = "policySuccess"
-policyIFailName   = "policyImpFailure"
-policyEFailName   = "policyExpFailure"
-policyErrorName   = "policyErrorFailure"
-
-policySuccessVal, policyIFailVal, policyEFailVal, policyErrorVal :: Int
-policySuccessVal = 1
-policyIFailVal   = -1
-policyEFailVal   = 0
-policyErrorVal   = -2
+policySuccessName, policyIFailName, policyEFailName :: String
+policySuccessName = "POLICY_SUCCESS"
+policyIFailName   = "POLICY_IMP_FAILURE"
+policyEFailName   = "POLICY_EXP_FAILURE"
 
 -- --------------------------------------------------------------------------------------
 
@@ -90,7 +83,7 @@ writeRuleCFile
 writeRuleCFile cFile debug profile _logging topMod policy modSyms usedSyms tinfo =
   writeFile cFile $ unlines $                                                  -- Write the impl file, consisting of:
   cHeader debug profile ++ (blank 1) ++
-  [renderC $     ruleLogStructure modSyms topMod policy ++ policyResultConsts ++ policyTypeHelpers modSyms usedSyms
+  [renderC $     ruleLogStructure modSyms topMod policy ++ policyTypeHelpers modSyms usedSyms
              ++ translateTopPolicy debug profile modSyms usedSyms tinfo topMod policy]
 
   {-
@@ -139,17 +132,6 @@ ruleLogStructure ms topMod (Just p) =
       pexCount (PECompModule _ lhs rhs) =  pexCount lhs + pexCount rhs
       pexCount (PENoChecks _) = 0
       pexCount (PERule _ _) = 0
-
-  -- Constant definitions for policy evaluation results
-policyResultConsts :: [Definition]
-policyResultConsts =
-  [cunit|
-    const int $id:policyErrorName = $int:policyErrorVal;
-    const int $id:policyEFailName = $int:policyEFailVal;
-    const int $id:policyIFailName = $int:policyIFailVal;
-    const int $id:policySuccessName = $int:policySuccessVal;
-
-  |]
 
 -- Most policy evaluation functions need access to the operands tag sets.  For
 -- convenience, we fix one set of names used as arguments to functions.  
