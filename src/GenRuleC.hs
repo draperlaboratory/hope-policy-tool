@@ -722,19 +722,21 @@ translatePolicy _ _ _ _ _ _ _ (PECompModule _ _p1 _p2) =
 translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
   [citems|
        if(ms_contains($id:ciArgName,$id:(tagName (qualifiedOpGrpMacro)))) {
-         $id:pass = $exp:patExp;
-         if ($id:pass) {
+         int $id:matchVar = $exp:patExp;
+         if ($id:matchVar) {
+           $id:pass = $id:policySuccessName;
            $stms:debugPrints
            $stms:ruleEvalLog
            $items:ruleResult
-         } else {
-           $id:pass = $id:policyIFailName;
          }
        }
    |]
   where
     qualifiedOpGrp :: QSym
     qualifiedOpGrp = resolveQSym ms modN ogrp
+
+    matchVar :: String
+    matchVar = "isRuleMatch"
 
     qualifiedOpGrpMacro :: QSym
     qualifiedOpGrpMacro = qualifyQSym (moduleForQSym ms modN ogrp) $ groupPrefix ogrp
