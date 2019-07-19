@@ -706,25 +706,22 @@ translatePolicy dbg ms ogMap pd tagInfo pass modN (PEVar _ x) =
     translatePolicy dbg ms ogMap pd tagInfo pass modN' p
 translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompExclusive _ p1 p2) =
   [citems|$items:p1';
-          if ($id:pass == $id:policyIFailName) {
-            $items:p2'
-          }|]
+          $items:p2'
+          |]
   where
      p1' = translatePolicy dbg ms ogMap pd tagInfo pass modN p1
      p2' = translatePolicy dbg ms ogMap pd tagInfo pass modN p2
 translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompPriority l p1 p2) =
   translatePolicy dbg ms ogMap pd tagInfo pass modN (PECompExclusive l p1 p2)
-translatePolicy _ _ _ _ _ pass _ (PENoChecks _) =
-  [citems|$id:pass = $id:policySuccessName;
-          return $id:pass;|]
+translatePolicy _ _ _ _ _ _pass _ (PENoChecks _) =
+  [citems| return $id:policySuccessName;|]
 translatePolicy _ _ _ _ _ _ _ (PECompModule _ _p1 _p2) =
   error "Unsupported: PECompModule in translatePolicy"
-translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
+translatePolicy dbg ms ogMap pd tagInfo _pass modN (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
   [citems|
        if(ms_contains($id:ciArgName,$id:(tagName (qualifiedOpGrpMacro)))) {
          int $id:matchVar = $exp:patExp;
          if ($id:matchVar) {
-           $id:pass = $id:policySuccessName;
            $stms:debugPrints
            $stms:ruleEvalLog
            $items:ruleResult
@@ -751,7 +748,7 @@ translatePolicy dbg ms ogMap pd tagInfo pass modN (PERule _ rc@(RuleClause _ ogr
         operandIDs = patOperands ogMap qualifiedOpGrp
 
     ruleResult :: [BlockItem]
-    ruleResult = translateRuleResult ms modN mask oprLookup boundNames tagInfo pass rres
+    ruleResult = translateRuleResult ms modN mask oprLookup boundNames tagInfo rres
       where
         oprLookup :: [(QSym,String)]
         oprLookup = expOperands ogMap qualifiedOpGrp
@@ -933,20 +930,20 @@ translatePatterns ms mn mask tagInfo ogmap pats =
 --     the rule result is to generate new tags, they'll assign new tags into the
 --     result array and return policySuccess from the current function.
 translateRuleResult :: ModSymbols -> ModName -> String -> [(QSym,String)]
-                    -> [(QSym,Exp)] -> TagInfo -> String -> RuleResult QSym
+                    -> [(QSym,Exp)] -> TagInfo -> RuleResult QSym
                     -> [BlockItem]
 -- handle the explicit failure case by printing a message and return failure                    
-translateRuleResult _ _ _ _ _ _ _ (RRFail _ msg) = [citems|
+translateRuleResult _ _ _ _ _ _ (RRFail _ msg) = [citems|
                                                   $id:contextArgName->fail_msg = $string:msg;
                                                   return $id:policyEFailName;|]
-translateRuleResult ms topMod mask ogMap varMap tagInfo pass (RRUpdate sp updates) =
+translateRuleResult ms topMod mask ogMap varMap tagInfo (RRUpdate sp updates) =
   case missingOperands of
     Left errMsg -> error errMsg
     Right defaultBlocks ->
          defaultBlocks
       ++ (concatMap (translateBoundGroupEx ms topMod mask ogMap varMap tagInfo)
                     updates)
-      ++ [ [citem|return $id:pass;|] ]
+      ++ [ [citem|return $id:policySuccessName;|] ]
   where
     -- This implements a check that the rule provides updated metadata for any
     -- memory/register updated by the instruction, according to the opgroup.
