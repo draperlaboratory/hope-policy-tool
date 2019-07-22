@@ -690,7 +690,7 @@ policyEval debug _profile ms ogMap tagInfo (modN, pd@(PolicyDecl _ _ _ pEx)) =
 --
 -- Results: A [BlockItem].  This is a list of statements that implements the
 -- policy and is intended to be part of the eval_policy function.  These
--- statements will set x to one of policySuccessName, policyIFailName, or
+-- statements will return one of policySuccessName, policyIFailName, or
 -- policyEFailName.  In the first case, the function will add the appropriate
 -- tags from this policy to the array of result tag lists.
 translatePolicy :: Bool -> ModSymbols -> OpGroupMap ->  PolicyDecl QSym
