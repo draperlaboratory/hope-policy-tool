@@ -189,7 +189,7 @@ data PState = PState {
 
 runP :: FilePath -> String -> P a -> Either String a
 runP fn input__ (P f)
-   = case f (PState {p_pos = SP fn 0 0,
+   = case f (PState {p_pos = SP fn 1 0,
                      p_inp = input__,
                      p_chr = '\n',
                      p_comment_depth = 0,
