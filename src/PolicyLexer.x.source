@@ -67,6 +67,7 @@ $white+                                ;
 <0> type     { token TType }
 <0> data     { token TData }
 <0> Int      { token TInt }
+<0> TagSet   { token TTagSet }
 <0> metadata { token TMetadata }
 <0> group    { token TGroup }
 <0> grp      { token TGrp }
@@ -340,6 +341,7 @@ data Token =
   | TType
   | TData
   | TInt
+  | TTagSet
   | TMetadata
   | TGroup
   | TGrp

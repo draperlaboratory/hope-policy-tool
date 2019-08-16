@@ -50,6 +50,7 @@ import System.FilePath ((</>),(<.>),joinPath)
   'type'           { L _ TType }
   'data'           { L _ TData }
   'Int'            { L _ TInt }
+  'TagSet'         { L _ TTagSet }
   'metadata'       { L _ TMetadata }
   'group'          { L _ TGroup }
   'grp'            { L _ TGrp }
@@ -156,6 +157,8 @@ typeDecl :: { TypeDecl QSym }
 
 tagDataType :: { TagDataType }
   : 'Int' optionalSize    { TDTInt (getSrcPos $1) $2 }
+  | 'TagSet'              { TDTTagSet (getSrcPos $1) }
+
 
 optionalSize :: { Maybe Int }
   : '(' INTLIT ')'   { Just (getIntLit $2) }
