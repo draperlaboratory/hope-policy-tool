@@ -376,15 +376,15 @@ ogMaskName = "og_mask"
 
 policyMask :: ModSymbols -> UsedSymbols -> TagInfo -> (ModName, PolicyDecl QSym) -> Definition
 policyMask _ _ (TagInfo {tiArrayLength}) (_, pd@(PolicyDecl _ PLGlobal _ _)) =
-  [cedecl|const typename uint32_t $id:(policyMaskName pd)[META_SET_WORDS] = $init:initializer;|]
+  [cedecl|const typename META_SET_TAG_TYPE $id:(policyMaskName pd)[META_SET_WORDS] = $init:initializer;|]
   where
     initializer :: Initializer
     initializer = CompoundInitializer (replicate (fromIntegral tiArrayLength) allOnes) noLoc
 
     allOnes :: (Maybe Designation,Initializer)
-    allOnes = (Nothing, ExpInitializer [cexp|0xFFFFFFFF|] noLoc)
+    allOnes = (Nothing, ExpInitializer [cexp|-1|] noLoc)
 policyMask ms us tinfo (mn, pd@(PolicyDecl _ PLLocal _ _)) =
-  [cedecl|const typename uint32_t $id:(policyMaskName pd)[META_SET_WORDS] = $init:initializer;|]
+  [cedecl|const typename META_SET_TAG_TYPE $id:(policyMaskName pd)[META_SET_WORDS] = $init:initializer;|]
   where
     initializer :: Initializer
     initializer = CompoundInitializer (map bi fieldMasks) noLoc
@@ -397,7 +397,7 @@ policyMask ms us tinfo (mn, pd@(PolicyDecl _ PLLocal _ _)) =
     fieldMasks :: [Exp]
     fieldMasks = fixedTagSetFields tinfo $
          (map (\(TagDecl _ nm args) ->
-                     (nm, replicate (length args) [cexp|0xFFFFFFFF|]))
+                     (nm, replicate (length args) [cexp|-1|]))
               qualifiedTags)
 
     qualifiedTags :: [TagDecl QSym]
