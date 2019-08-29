@@ -67,6 +67,13 @@ tagSetHeader (TagInfo {tiMaxTag,tiArrayLength,tiNumBitFields,tiNumDataArgs}) = u
   ,"// The maximum tag.  Tags are positions in the 'tags' bitfield."
   ,"#define MAX_TAG " ++ show tiMaxTag
   ,""
+  ,"// Actual tag size (while we use 32-bit tags the software validator is 64-bit)"
+  ,"#if UINTPTR_MAX == UINT32_MAX"
+  ,"#define META_SET_TAG_TYPE uint32_t"
+  ,"#elif UINTPTR_MAX == UINT64_MAX"
+  ,"#define META_SET_TAG_TYPE uint64_t"
+  ,"#endif // UINTPTR_MAX == UINT?_MAX"
+  ,""
   ]
 
 tagSetFooter :: String
@@ -85,7 +92,7 @@ tagSetBody = [cunit|
   typedef typename uintptr_t meta_t;
   
   typedef struct {
-    typename uint32_t tags[ META_SET_WORDS ];
+    typename META_SET_TAG_TYPE tags[ META_SET_WORDS ];
   } meta_set_t;
 
   typename bool ms_contains(const meta_set_t* ms, meta_t m);
