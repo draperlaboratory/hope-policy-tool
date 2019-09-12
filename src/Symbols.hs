@@ -177,11 +177,9 @@ lookupQSym sts fn mn qs =
     res:[] -> Right res
     reses ->
       Left $
-      "Multiple symbols found: " ++
-      (unqualSymStr qs) ++
-      " reached from: " ++
-      (dotName mn) ++
-      " from modules: " ++ (intercalate ", " $ map (dotName . fst) reses)
+           "Multiple definitions found for symbol \"" ++ (unqualSymStr qs)
+        ++ "\".  It is defined in modules:\n  "
+        ++ (intercalate ",\n  " $ map (dotName . fst) reses)
 
 type PartialResult a = Maybe (ModName, a)
 
