@@ -54,7 +54,8 @@ options =
  
     , Option "m" ["module-dir"]
         (ReqArg
-             (\arg opt -> return opt { optModuleDir = arg })
+             (\arg opt ->
+                 return $ opt { optModuleDir = arg:(optModuleDir opt)})
             "<module-dir>")
         "Set path to base module dir"
  
@@ -113,16 +114,17 @@ main = do
         hPutStrLn stderr $ unlines msgs
 
 
-optFldErrs :: [(Options -> String, [Char])]
-optFldErrs = [ (optModuleDir, "Error: missing -m <module directory path>")
-             , (optTargetDir, "Error: missing -t <target directory path>")
-             , (optOutputDir, "Error: missing -o <output directory path>")
+optFldErrs :: [(Options -> Bool, [Char])]
+optFldErrs = [ (\o -> optModuleDir o == [],
+                "Error: missing -m <module directory path>")
+             , (\o -> optTargetDir o == "",
+                "Error: missing -t <target directory path>")
+             , (\o -> optOutputDir o == "",
+                "Error: missing -o <output directory path>")
              ]
 
 checkErrs  :: Options -> [String]
-checkErrs opts = map snd $ filter isError optFldErrs
-  where
-    isError (f,_) = f opts == ""
+checkErrs opts = map snd $ filter (\(test,_) -> test opts) optFldErrs
 
 processMods :: Options -> [String] -> IO()
 processMods _ [] = do
@@ -190,11 +192,7 @@ handle args = do
     -- Here we thread startOptions through all supplied option actions
     opts <- foldl (>>=) (return defaultOptions) actions
  
-    let Options { optIR = ir
-                , optOutputDir = _output
-                , optFileName = _fileName   } = opts
- 
-    when ir (hPutStrLn stderr "Generating in verbose mode:")
+    when (optIR opts) (hPutStrLn stderr "Generating in verbose mode:")
 
       -- be sure to sort to make command line deterministic
     return (opts, sort nonOptions)
