@@ -96,8 +96,8 @@ ruleLogStructure :: ModSymbols -> ModName -> Maybe (PolicyDecl QSym) -> [Definit
 ruleLogStructure _ _ Nothing = []
 ruleLogStructure ms topMod (Just p) = 
   [cunit|
-    const int ruleLogMax = $int:(polCount p);
-    char* ruleLog[$int:(polCount p + 1)];
+    const int ruleLogMax = $int:(polCount);
+    char* ruleLog[$int:(polCount + 1)];
     int ruleLogIdx = 0;
 
         void logRuleEval(const char* ruleDescription) {
@@ -119,19 +119,11 @@ ruleLogStructure ms topMod (Just p) =
         }
   |]
     where
-      -- use count of policy names as proxy for the number of possible rule evals
-      -- TODO: perform a more accurate count
-      polCount :: PolicyDecl QSym -> Int
-      polCount (PolicyDecl _ _ _ pex) = 1 + pexCount pex
-      pexCount :: PolicyEx QSym -> Int
-      pexCount (PEVar _ qn) =
-        let (_, pol) = getPolicy ms topMod qn in polCount pol
-
-      pexCount (PECompExclusive _ lhs rhs) = pexCount lhs + pexCount rhs
-      pexCount (PECompPriority _ lhs rhs) =  pexCount lhs + pexCount rhs
-      pexCount (PECompModule _ lhs rhs) =  pexCount lhs + pexCount rhs
-      pexCount (PENoChecks _) = 0
-      pexCount (PERule _ _) = 0
+      -- TODO: it's a little inefficient to call this both here and later
+      -- during policy translation
+      polCount :: Int
+      polCount = let (ds1,ds2) = topPolicyPieces ms topMod p in
+                   length ds1 + length ds2
 
 -- Most policy evaluation functions need access to the operands tag sets.  For
 -- convenience, we fix one set of names used as arguments to functions.  
@@ -308,7 +300,7 @@ expOperands ogMap og =
     standardOperands = [(QVar ["env"],resultsPC)]
 
 -- This function checks that the top-level declaration has the form
---    gp_1 ^ ... ^ gp_n ^ (lp_1 & ... & lp_k)
+--    gp_1 & ... & gp_n & lp_1 & ... & lp_k
 -- Where each gp_i is a "global" policy (like the loader policy) and each lp_i
 -- is a normal policy like (like rwx or cfi).
 --
@@ -316,56 +308,54 @@ expOperands ogMap og =
 -- and the local policies, in that order.
 --
 -- This should really return a maybe, instead of erroring
-topPolicyPieces :: ModSymbols -> ModName -> PolicyEx QSym
+topPolicyPieces :: ModSymbols -> ModName -> PolicyDecl QSym
                 -> ([(ModName, PolicyDecl QSym)],[(ModName,PolicyDecl QSym)])
-topPolicyPieces ms topMod pEx =
-  case topPolicyVars pEx of
+topPolicyPieces ms topMod topDecl =
+  case topLevelDeclsD topMod topDecl of
     Nothing -> error tppError
-    Just pr -> pr
+    Just decls -> case splitDecls [] decls of
+      Nothing -> error tppError
+      Just split -> split
   where
-    topPolicyVars :: PolicyEx QSym
-                  -> Maybe ([(ModName, PolicyDecl QSym)],[(ModName,PolicyDecl QSym)])
-    topPolicyVars (PEVar _ x) =
-      case getPolicy ms topMod x of
-        (modN, p@(PolicyDecl _ PLGlobal _ _)) -> Just ([(modN,p)],[])
-        (modN, p@(PolicyDecl _ PLLocal _ _))  -> Just ([],[(modN,p)])
-    topPolicyVars (PECompPriority _ p1 p2) =
-      case (gTop p1,topPolicyVars p2) of
-        (Just gp1, Just (gp2,lp2)) -> Just (gp1 ++ gp2,lp2)
-        _ -> Nothing
-    topPolicyVars (PECompModule _ p1 p2) =
-      case (lTop p1,lTop p2) of
-        (Just lp1,Just lp2) -> Just ([],lp1 ++ lp2)
-        _ -> Nothing
-    topPolicyVars _ = Nothing
+    -- Computes the names of the policies composed with &s, in order
+    topLevelDeclsD :: ModName -> PolicyDecl QSym
+                   -> Maybe [(ModName,PolicyDecl QSym)]
+    topLevelDeclsD mn (PolicyDecl _ _ _ pe@(PECompModule _ _ _)) =
+      topLevelDeclsE mn pe
+    topLevelDeclsD mn (PolicyDecl _ _ _ pe@(PEVar _ _)) =
+      topLevelDeclsE mn pe
+    topLevelDeclsD mn p = Just [(mn,p)]
 
-    gTop :: PolicyEx QSym -> Maybe [(ModName, PolicyDecl QSym)]
-    gTop (PEVar _ x) =
-      case getPolicy ms topMod x of
-        (modN, p@(PolicyDecl _ PLGlobal _ _)) -> Just [(modN,p)]
-        (_, (PolicyDecl _ PLLocal _ _)) -> Nothing
-    gTop (PECompPriority _ p1 p2) =
-       case (gTop p1, gTop p2) of
-         (Just gp1, Just gp2) -> Just (gp1 ++ gp2)
-         _ -> Nothing
-    gTop _ = Nothing
+    topLevelDeclsE :: ModName -> PolicyEx QSym
+                   -> Maybe [(ModName,PolicyDecl QSym)]
+    topLevelDeclsE _ (PEVar _ x) =
+      let (mn',p') = getPolicy ms topMod x in topLevelDeclsD mn' p'
+    topLevelDeclsE mn (PECompModule _ p1 p2) = do
+      ds1 <- topLevelDeclsE mn p1
+      ds2 <- topLevelDeclsE mn p2
+      return $ ds1 ++ ds2
+    topLevelDeclsE _ _ = Nothing
 
-    lTop :: PolicyEx QSym -> Maybe [(ModName, PolicyDecl QSym)]
-    lTop (PEVar _ x) =
-      case getPolicy ms topMod x of
-        (modN, p@(PolicyDecl _ PLLocal _ _)) -> Just [(modN,p)]
-        (_, (PolicyDecl _ PLGlobal _ _)) -> Nothing
-    lTop (PECompModule _ p1 p2) =
-       case (lTop p1, lTop p2) of
-         (Just lp1, Just lp2) -> Just (lp1 ++ lp2)
-         _ -> Nothing
-    lTop _ = Nothing
+    -- This confirms the list is globals at the front and locals at the back,
+    -- and splits them.
+    splitDecls :: [(ModName,PolicyDecl b)]
+               -> [(ModName,PolicyDecl b)]
+               -> Maybe ([(ModName,PolicyDecl b)],[(ModName,PolicyDecl b)])
+    splitDecls _ [] = Nothing
+    splitDecls gacc ((p@(_,PolicyDecl _ PLGlobal _ _)):ps) =
+      splitDecls (p:gacc) ps
+    splitDecls gacc ps =
+      if all (\(_,PolicyDecl _ pll _ _) -> pll == PLLocal) ps then
+        Just (reverse gacc,ps)
+      else
+        Nothing
 
     tppError :: String
     tppError = "Error: top-level policy must have the form:\n\n"
-            ++ "   gp_1 ^ ... ^ gp_n ^ (lp_1 & ... & lp_k)\n\n"
+            ++ "   gp_1 & ... & gp_n & lp_1 & ... & lp_k\n\n"
             ++ "Where each gp_i is a \"global\" policy name (like loader) and "
-            ++ "each lp_i is a \"normal\" policy name (like rwx or cfi)"
+            ++ "each lp_i is a \"normal\" policy name (like rwx or cfi).\n"
+            ++ "There must be at least one \"normal\" policy.\n"
 
 
 -- The policy mask is used to "hide" the irrelevant parts of a tag set, which is
@@ -512,7 +502,7 @@ translateTopPolicy _debug _profile _ms _us _ _ Nothing =
         int eval_policy ($params:policyInputParams) {
           return $id:policySuccessName;
         }|] ]
-translateTopPolicy debug profile ms us tinfo topMod (Just (PolicyDecl _ _ _ p)) =
+translateTopPolicy debug profile ms us tinfo topMod (Just pd) =
   ogMasks tinfo ++ policyMasks ++ evalHelpers ++ 
     [ [cedecl|
         int eval_policy ($params:policyInputParams) {
@@ -528,7 +518,7 @@ translateTopPolicy debug profile ms us tinfo topMod (Just (PolicyDecl _ _ _ p)) 
         }|] ]
   where
     globalPolicies, localPolicies :: [(ModName, PolicyDecl QSym)]
-    (globalPolicies,localPolicies) = topPolicyPieces ms topMod p
+    (globalPolicies,localPolicies) = topPolicyPieces ms topMod pd
 
     policyMasks :: [Definition]
     policyMasks = map (policyMask ms us tinfo) (globalPolicies ++ localPolicies)
@@ -1170,4 +1160,3 @@ cHeader _debug _profile = [ "#include \"policy_meta.h\""
                          , "#include <string.h>"
                          , ""
                          ]
-
