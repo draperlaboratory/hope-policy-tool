@@ -146,10 +146,10 @@ processMods opts topPolicyName = do
                                when (optIR opts) $ genSymbolsFile symbols
                                case locateMain topPolicyName symbols of
                                  Right (mainModule, mainPolicyDecl) -> do
-                                   hPutStrLn stdout "Located main policy."
+                                   hPutStrLn stdout "Located top-level policy."
                                    case validateMain symbols mainModule mainPolicyDecl of
                                      Right uniqueSyms -> do
-                                       hPutStrLn stdout "Validated main policy.\n"
+                                       hPutStrLn stdout "Validated top-level policy.\n"
                                        when (optIR opts) $ genASTFile $ Just mainPolicyDecl
                                        case validateModuleRequires symbols (uniqueMods uniqueSyms) of
                                          Right uniqueReqs -> do
@@ -162,11 +162,11 @@ processMods opts topPolicyName = do
                                            hPutStrLn stderr $ unlines $ errs
                                            exitFailure                                         
                                      Left errs -> do
-                                       hPutStrLn stderr "\nError Unable to validate main policy: " 
+                                       hPutStrLn stderr "\nError Unable to validate top-level policy: " 
                                        hPutStrLn stderr $ unlines $ errs
                                        exitFailure
                                  Left errs -> do
-                                   hPutStrLn stderr "\nError Unable to locate main policy: " 
+                                   hPutStrLn stderr "\nError while locating top-level policy: " 
                                    hPutStrLn stderr $ unlines $ errs
                                    exitFailure
       where

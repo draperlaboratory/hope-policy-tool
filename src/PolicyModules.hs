@@ -29,15 +29,7 @@ module PolicyModules where
 import Data.Either
 
 import Data.Foldable
-{-
-import HeapPolicy
-import StackPolicy
-import CFIPolicy
-import RWXPolicy
-import NopPolicy
-import CptPolicy
-import WkTPolicy
--}
+import Control.Monad (when)
 import AST
 import CommonFn
 import CommonTypes
@@ -64,8 +56,14 @@ getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
     getModule ms qmn = do
       result <- polParse opts qmn
       case result of
-        m@(Right mnm) -> let imports = getImports mnm in
-                           foldlM getModule (m:ms) imports
+        m@(Right mdcl@(ModuleDecl _ foundName _)) -> do
+          when (qmn /= foundName) $ error $
+               "Error: File contained unexpected module " ++ dotName foundName
+            ++ ".\n  Expected module " ++ dotName qmn
+            ++ ".\n  Likely cause: file contains incorrect \"module\" "
+            ++ "declaration.\n"
+          let imports = getImports mdcl
+          foldlM getModule (m:ms) imports
         Left e -> error ("Error parsing module: " ++ e)
     
 getModules _ _ = return [Left "Unable to locate top level module" ]
