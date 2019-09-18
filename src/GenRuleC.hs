@@ -1031,10 +1031,15 @@ translateTagSetEx _ _ (_:[]) _ _ _ _ =
   error "Internal error: translateTagSetEx exhausted its fresh name supply."
 translateTagSetEx _ _ vars resVar varMap _ (TSEVar loc y) =
   case lookup y varMap of
-    Nothing -> error $ "Rule result uses unbound variable " ++ show y
-                    ++ "(" ++ ppSrcPos loc ++ ")"
+    Nothing -> case lookup better varMap of
+                Nothing -> error $ show varMap ++ "\n" ++
+                  "Undefined variable: " ++ show y -- ++ "\t" ++ show (QVar [(last(qName y))])
+                Just ts -> ([citems|memcpy(&$id:resVar,$exp:ts,sizeof(typename meta_set_t));|],
+                  vars)
     Just ts -> ([citems|memcpy(&$id:resVar,$exp:ts,sizeof(typename meta_set_t));|],
                 vars)
+  where better :: QName [String]
+        better = QVar ("osv":"contextswitch":last((qName y)):[])
 translateTagSetEx ms mn vars resVar varMap tagInfo (TSEExact _ tags) =
   (map (\(idx,val) -> [citem|$id:resVar.tags[$exp:idx] = $exp:val;|]) exactFields,
    vars)
@@ -1132,8 +1137,10 @@ translateTagSetEx ms mn (v1:vars) resVar varMap tagInfo (TSEIntersect _ tse1 tse
 buildArgField :: ModSymbols -> ModName -> [(QSym,Exp)] -> (TagField QSym,(Word32,TypeDecl QSym)) -> Exp
 buildArgField _ _ varMap (TFVar sp v,_) =
   case lookup v varMap of
-    Nothing -> error $
-      "Undefined variable " ++ tagString v ++ " at " ++ ppSrcPos sp
+    Nothing -> case lookup (QVar [(last(qName v))]) varMap of
+                Nothing -> error $ show varMap ++ "\n" ++
+                  "Undefined variable " ++ tagString v ++ " at " ++ ppSrcPos sp
+                Just e -> e
     Just e -> e
 buildArgField ms mn _ (TFNew _,(_,typ)) =
   [cexp|$id:(typeGenFuncName qualifiedType)(ctx)|]
