@@ -79,6 +79,7 @@ instance Symbol (TypeDecl QSym) where
   pos (TypeDecl p _ _) = p
 
 data TagDataType = TDTInt SrcPos (Maybe Int)
+                 | TDTTagSet SrcPos
   deriving (Show,Eq,Ord)
 
 

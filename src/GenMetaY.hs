@@ -79,3 +79,4 @@ mkFields (idx, typ) = object [ "index"     .= idx
     fieldTyp (TypeDecl _ _ tdt) = ts tdt
     ts :: TagDataType -> String
     ts (TDTInt _ _) = "Int"
+    ts (TDTTagSet _) = "TagSet"

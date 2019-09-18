@@ -202,6 +202,7 @@ policyTypeHelpers ms us = concatMap typeHelpers $ usedTypes ms us
         updateVal = case mrange of
                       Nothing -> [cexp|$id:globalNm + 1|]
                       Just count -> [cexp|($id:globalNm + 1) % $exp:count|]
+    typeHelpers (_, TypeDecl _ _(TDTTagSet _)) = []
 
 typeUsedGlobalName, typeGenFuncName :: QSym -> String
 typeUsedGlobalName qs = typeName qs ++ "_next_fresh"
