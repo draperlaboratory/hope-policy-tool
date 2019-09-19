@@ -796,8 +796,12 @@ translatePatterns ms mn mask tagInfo ogmap pats =
       case lookup tsID ogmap of
         Nothing -> error $ "No opgroup binding for operand \"" ++ show tsID
                         ++ "\" at " ++ ppSrcPos loc
-        Just tsName -> translateTSPat tsID tsName (fmap (resolveQSym ms mn) pat)
-        
+        Just tsName -> translateTSPat tsID tsName pat
+
+
+    qualifyTag :: Tag QSym -> Tag QSym
+    qualifyTag (Tag sp nm args) = Tag sp (resolveQSym ms mn nm) args
+
     -- Give this the name of a pointer to a meta_set_t, and a TagSetPattern, and
     -- it will return (a) an expression that is true iff the pattern matches,
     -- and (b) a list of names that the pattern binds to the input tag set.
@@ -812,9 +816,9 @@ translatePatterns ms mn mask tagInfo ogmap pats =
              (map checkAtLeast tes)
       where
         checkAtLeast :: TagEx QSym -> (Exp,[(QSym,Exp)])
-        checkAtLeast (TagEx _ t) = checkContains ts t
-        checkAtLeast (TagPlusEx _ t) = checkContains ts t
-        checkAtLeast (TagMinusEx _ t) = checkAbsent ts t        
+        checkAtLeast (TagEx _ t) = checkContains ts $ qualifyTag t
+        checkAtLeast (TagPlusEx _ t) = checkContains ts $ qualifyTag t
+        checkAtLeast (TagMinusEx _ t) = checkAbsent ts $ qualifyTag t
     translateTSPat tsID ts (TSPExact _ tags) =
       (foldl' (\e1 e2 -> [cexp|$exp:e1 && $exp:e2|])
               [cexp|1|]
@@ -829,16 +833,15 @@ translatePatterns ms mn mask tagInfo ogmap pats =
         -- Separately, we use the "argBinding" function (which is also used in
         -- the at least case) to capture any argument bindings and any equality
         -- contraints created by non-linear pattern matching.
-        
         tagQSyms :: [(QSym,[Exp])]
-        tagQSyms = map (\(Tag _ qs args) -> (qs,map (\_ -> [cexp|0|]) args)) tags
+        tagQSyms = map (\(Tag _ qs args) -> (resolveQSym ms mn qs,map (\_ -> [cexp|0|]) args)) tags
 
         argBindings :: [(QSym,Exp)]
         argBindings = concatMap tagBindings tags
           where
             tagBindings :: Tag QSym -> [(QSym,Exp)]
             tagBindings (Tag _ qs args) =
-              case M.lookup qs (tiTagArgInfo tagInfo) of
+              case M.lookup (resolveQSym ms mn qs) (tiTagArgInfo tagInfo) of
                 Nothing -> error $ "Internal error: unknown tag " ++ tagString qs
                                 ++ " in translateTSPat's arg lookup."
                 Just argInfo ->
@@ -1031,15 +1034,10 @@ translateTagSetEx _ _ (_:[]) _ _ _ _ =
   error "Internal error: translateTagSetEx exhausted its fresh name supply."
 translateTagSetEx _ _ vars resVar varMap _ (TSEVar loc y) =
   case lookup y varMap of
-    Nothing -> case lookup better varMap of
-                Nothing -> error $ show varMap ++ "\n" ++
-                  "Undefined variable: " ++ show y -- ++ "\t" ++ show (QVar [(last(qName y))])
-                Just ts -> ([citems|memcpy(&$id:resVar,$exp:ts,sizeof(typename meta_set_t));|],
-                  vars)
+    Nothing -> error $ "Rule result uses unbound variable " ++ show y
+                    ++ "(" ++ ppSrcPos loc ++ ")"
     Just ts -> ([citems|memcpy(&$id:resVar,$exp:ts,sizeof(typename meta_set_t));|],
                 vars)
-  where better :: QName [String]
-        better = QVar ("osv":"contextswitch":last((qName y)):[])
 translateTagSetEx ms mn vars resVar varMap tagInfo (TSEExact _ tags) =
   (map (\(idx,val) -> [citem|$id:resVar.tags[$exp:idx] = $exp:val;|]) exactFields,
    vars)
