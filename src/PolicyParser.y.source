@@ -3,6 +3,7 @@ module PolicyParser (polParse,parseDotName) where
 
 import PolicyLexer
 import AST
+import qualified Data.ByteString as ByteString
 import CommonTypes (Options(..))
 import ErrorMsg (ErrMsg(..))
 import Data.List (intercalate)
@@ -425,7 +426,7 @@ polParse opts qmn = do
                    ++ concatMap (\fp -> "  " ++ fp ++ "\n") impls
     impl:[] -> do
       putStrLn ("Reading file: " ++ impl)
-      contents <- readFile impl
+      contents <- ByteString.readFile impl
       return $ runP impl contents parseModule
   where
     moduleDirs :: [FilePath]

@@ -4,6 +4,9 @@ module PolicyLexer(Token(..), Located(..), getSrcPos,
                    SrcPos(..),alexGetSrcPos,alexError) where
 
 
+import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Internal as ByteString (w2c)
+import qualified Data.ByteString.Char8 as BSChar
 import Data.Char (isSpace, isDigit, ord)
 import Data.Word (Word8)
 import Control.Applicative as App (Applicative (..))
@@ -153,7 +156,7 @@ utf8Encode = map fromIntegral . go . ord
                         , 0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
                         , 0x80 + oc Data.Bits..&. 0x3f
                         ]
-  
+
 alexMove :: SrcPos -> Char -> SrcPos
 alexMove (SP f l c) '\t' = SP f  l     (((c+alex_tab_size-1) `div` alex_tab_size)*alex_tab_size+1)
 alexMove (SP f l _) '\n' = SP f (l+1)   1
@@ -162,24 +165,26 @@ alexMove (SP f l c) _    = SP f  l     (c+1)
 type AlexInput = (SrcPos,     -- current position,
                   Char,         -- previous char
                   [Word8],       -- pending bytes on current char
-                  String)       -- current input string
+                  ByteString.ByteString)       -- current input string
 
 ignorePendingBytes :: AlexInput -> AlexInput
 ignorePendingBytes (p,c,_ps,s) = (p,c,[],s)
 
 alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
 alexGetByte (p,c,(b:bs),s) = Just (b,(p,c,bs,s))
-alexGetByte (_,_,[],[]) = Nothing
-alexGetByte (p,_,[],(c:s))  = let p' = alexMove p c
-                                  (b:bs) = utf8Encode c
-                              in p' `seq`  Just (b, (p', c, bs, s))
+alexGetByte (p,_,[],cs) = case ByteString.uncons(cs) of
+                            Nothing -> Nothing
+                            Just (c,s) -> let c' = ByteString.w2c c
+                                              p' = alexMove p c'
+                                              (b:bs) = utf8Encode c'
+                              in p' `seq` Just (b, (p', c', bs, s))
 
 alexInputPrevChar :: AlexInput -> Char
 alexInputPrevChar (_p,c,_bs,_s) = c
 
 data PState = PState {
         p_pos :: !SrcPos,  -- position at current input location
-        p_inp :: String,     -- the current input
+        p_inp :: ByteString.ByteString,     -- the current input
         p_chr :: !Char,      -- the character before the input
         p_comment_depth :: !Int, -- the current depth of nested comments
         p_bytes :: [Word8],
@@ -188,7 +193,7 @@ data PState = PState {
 
 -- Compile with -funbox-strict-fields for best results!
 
-runP :: FilePath -> String -> P a -> Either String a
+runP :: FilePath -> ByteString.ByteString -> P a -> Either String a
 runP fn input__ (P f)
    = case f (PState {p_pos = SP fn 1 0,
                      p_inp = input__,
@@ -294,17 +299,16 @@ token :: tk -> PAction (Located tk)
 token t (sp,_,_,_) _ = return (L sp t)
 
 tokenName :: (String -> tk) -> PAction (Located tk)
-tokenName t (sp,_,_,str) len = return $ L sp $ t $ take len str
+tokenName t (sp,_,_,str) len = return $ L sp $ t $ BSChar.unpack $ ByteString.take (fromIntegral len) str
 
 tokenNum :: (Int -> tk) -> PAction (Located tk)
-tokenNum t (sp,_,_,str) len = return $ L sp $ t $ read $ take len str
+tokenNum t (sp,_,_,str) len = return $ L sp $ t $ read $ BSChar.unpack $ ByteString.take (fromIntegral len) str
 
 tokenStringLit :: PAction (Located Token)
-tokenStringLit (sp,_,_,(_:str)) len =
-  return $ L sp $ TStringLit $ take (len - 2) str
-tokenStringLit (_,_,_,[]) _ =
-  alexError
-    "Impossible: tokenStringLit encountered empty string during lexing."
+tokenStringLit (sp,_,_,str) len
+  | not (ByteString.null str) = return $ L sp $ TStringLit $ BSChar.unpack $ ByteString.take (fromIntegral (len - 2)) $ ByteString.drop 1 $ str
+  | otherwise = alexError
+        "Impossible: tokenStringLit encountered empty string during lexing."
 
 ------------------------------------------------------------------------------
 -- DPL stuff
@@ -408,12 +412,11 @@ getSrcPos :: Located a -> SrcPos
 getSrcPos (L sp _) = sp
 
 followedByNum :: AlexAccPred a
-followedByNum _ _ _ (_, _, _, str) =
-  case afterSpace of
-    [] -> False
-    (d : _) -> isDigit d
+followedByNum _ _ _ (_, _, _, str)
+  | ByteString.null afterSpace = False
+  | otherwise = isDigit $ ByteString.w2c $ ByteString.head afterSpace
   where
-    afterSpace = dropWhile isSpace str
+    afterSpace = BSChar.dropWhile isSpace str
 
 handleLineNum :: Int -> PAction (Located Token)
 handleLineNum alexState inp@(_, _, _, str) len =
@@ -424,15 +427,15 @@ handleLineNum alexState inp@(_, _, _, str) len =
     _ -> alexError "Lexing error: Expected integer in line number pragma."
   where
     parsedInts :: [(Int,String)]
-    parsedInts = reads str
+    parsedInts = reads $ show str
 
 handleFileName :: PAction (Located Token)
-handleFileName inp@(_, _, _, str) len =
-  case str of
-    ('"' : str') -> do
-      alexSetFile (takeWhile ((/=) '"') str')
+handleFileName inp@(_, _, _, str) len
+  | ByteString.null(str) = alexError "Lexing error: Expected file name in line number pragma."
+  | ByteString.w2c(ByteString.head(str)) == '"' = do
+      alexSetFile $ show $ BSChar.takeWhile ((/=) '"') (ByteString.tail str)
       begin 0 inp len
-    _ -> alexError "Lexing error: Expected file name in line number pragma."
+  | otherwise = alexError "Lexing error: Expected file name in line number pragma."
 
 pushComment :: Int -> PAction (Located Token)
 pushComment sc inp len = do
