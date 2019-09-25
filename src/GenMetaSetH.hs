@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -27,24 +27,21 @@
 {-# LANGUAGE NamedFieldPuns #-}
 module GenMetaSetH (writeMetaSetHFile) where
 
-import GenUtils(renderC)
-
 import Language.C.Syntax
 import Language.C.Quote.GCC
 
+import GenUtils (renderC)
 import Tags (TagInfo(..))
-
 
 writeMetaSetHFile :: FilePath -> TagInfo -> IO ()
 writeMetaSetHFile chFile tinfo =
   writeFile chFile (   tagSetHeader tinfo
                     ++ (renderC tagSetBody) ++ "\n\n"
                     ++ tagSetFooter)
-  
-
 
 tagSetHeader :: TagInfo -> String
-tagSetHeader (TagInfo {tiMaxTag,tiArrayLength,tiNumBitFields,tiNumDataArgs}) = unlines
+tagSetHeader (TagInfo {tiMaxTag,tiArrayLength,
+                       tiNumBitFields,tiNumDataArgs}) = unlines
   ["#ifndef META_SET_H"
   ,"#define META_SET_H"
   ,""
@@ -88,9 +85,8 @@ tagSetFooter = unlines
 
 tagSetBody :: [Definition]
 tagSetBody = [cunit|
-
   typedef typename uintptr_t meta_t;
-  
+
   typedef struct {
     typename META_SET_TAG_TYPE tags[ META_SET_WORDS ];
   } meta_set_t;

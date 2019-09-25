@@ -1,12 +1,11 @@
 {
-module PolicyParser (polParse) where
+module PolicyParser (polParse,parseDotName) where
 
-  
 import PolicyLexer
 import AST
 import CommonTypes (Options(..))
-import CommonFn (dotName)
 import ErrorMsg (ErrMsg(..))
+import Data.List (intercalate)
 import System.FilePath ((</>),(<.>),joinPath)
 import System.Directory (doesFileExist)
 import Control.Monad (foldM)
@@ -121,7 +120,7 @@ import Control.Monad (foldM)
 ------------------------------------------------------------------------------
 module :: { ModuleDecl QSym }
   : 'module' QNAME ':' sections
-       { ModuleDecl (getSrcPos $1) (qualifyName $2) (reverse $4) }
+       { ModuleDecl (getSrcPos $1) (tokenToParsedName $2) (reverse $4) }
 
 sections :: { [SectDecl QSym] }
   : section { [$1] }
@@ -144,7 +143,7 @@ importSect :: { [ImportDecl QSym] }
   | importSect importStmt { $2 : $1 }
 
 importStmt :: { ImportDecl QSym }
-  : QNAME  { ImportDecl (getSrcPos $1) (qualifyName $1) }
+  : QNAME  { ImportDecl (getSrcPos $1) (tokenToParsedName $1) }
 
 ------------------------------------------------------------------------------
 ---------- Types                                                    ----------
@@ -381,7 +380,7 @@ requireSect :: { [RequireDecl QSym] }
 
 requireDecl :: { RequireDecl QSym }
   : 'init' QNAME requireSet
-      { Init (getSrcPos $1) (qualifyName $2) $3 }
+      { Init (getSrcPos $1) (tokenToParsedName $2) $3 }
 
 requireSet :: { InitSet QSym }
   : '{' tags '}'       { ISExact (getSrcPos $1) (reverse $2) }
@@ -396,15 +395,8 @@ requireSet :: { InitSet QSym }
 happyError :: P a
 happyError = alexError "parse error."
 
-separate :: String -> [String]
-separate = sep [] []
-  where
-    sep :: [String] -> String -> String -> [String]
-    sep acc []    []      = reverse acc
-    sep acc chunk []      = reverse (reverse chunk : acc)
-    sep acc []    ('.':s) = sep acc [] s
-    sep acc chunk ('.':s) = sep (reverse chunk : acc) [] s
-    sep acc chunk (c:s)   = sep acc (c:chunk) s
+parseDotName :: String -> [String]
+parseDotName = words . map (\c -> if c == '.' then ' ' else c)
 
 getName :: Located Token -> String
 getName (L _ (TID nm)) = nm
@@ -412,8 +404,8 @@ getName (L _ t) = error $
      "Impossible: parser encountered non-identifier token ("
   ++ show t ++ ") after checking for identifier in getName."
 
-qualifyName :: Located Token -> [String]
-qualifyName t = separate $ getName t
+tokenToParsedName :: Located Token -> [String]
+tokenToParsedName t = parseDotName $ getName t
 
 getIntLit :: Located Token -> Int
 getIntLit (L _ (TIntLit i)) = i
@@ -426,10 +418,10 @@ polParse opts qmn = do
   impls <- findImplementations
   case impls of
     [] -> error $ "Couldn't find file corresponding to module "
-               ++ dotName qmn ++ ".  Searched:\n"
+               ++ intercalate "." qmn ++ ".  Searched:\n"
                ++ concatMap (\fp -> "  " ++ fp ++ "\n") moduleDirs
     _:_:_ -> error $ "Found multiple conflicting implementations of module "
-                   ++ dotName qmn ++ " at:\n"
+                   ++ intercalate "." qmn ++ " at:\n"
                    ++ concatMap (\fp -> "  " ++ fp ++ "\n") impls
     impl:[] -> do
       putStrLn ("Reading file: " ++ impl)

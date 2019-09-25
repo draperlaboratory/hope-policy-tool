@@ -20,7 +20,7 @@ $idchar         = [$alpha $digit _ \- \.]
 @number       = $digit+
 @doublequoted = $doublequotable*
 
-dpl :- 
+dpl :-
 
 $white+                                ;
 
@@ -163,7 +163,7 @@ type AlexInput = (SrcPos,     -- current position,
                   Char,         -- previous char
                   [Word8],       -- pending bytes on current char
                   String)       -- current input string
-   
+
 ignorePendingBytes :: AlexInput -> AlexInput
 ignorePendingBytes (p,c,_ps,s) = (p,c,[],s)
 
@@ -173,7 +173,7 @@ alexGetByte (_,_,[],[]) = Nothing
 alexGetByte (p,_,[],(c:s))  = let p' = alexMove p c
                                   (b:bs) = utf8Encode c
                               in p' `seq`  Just (b, (p', c, bs, s))
-  
+
 alexInputPrevChar :: AlexInput -> Char
 alexInputPrevChar (_p,c,_bs,_s) = c
 
@@ -449,16 +449,16 @@ lexer :: (Located Token -> P a) -> P a
 lexer f = alexMonadScan >>= f
 
 -- These two functions are useful for testing the lexer in isolation
--- 
+--
 -- scanner :: String -> Either String (Int,[Located Token])
 -- scanner str = runP "name" str $ do
 --   let loop i acc =
---         do tok <- alexMonadScan; 
+--         do tok <- alexMonadScan;
 --             if tok == TEOF
 --               then return (i,reverse acc)
 --               else do loop (i+1) (tok : acc)
 --   loop 0 []
--- 
+--
 -- main = do
 --   s <- getContents
 --   print (scanner s)

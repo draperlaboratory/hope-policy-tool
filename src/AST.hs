@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -44,23 +44,23 @@ data SrcPos = SP !String !Int !Int  -- filename, line, column
 ppSrcPos :: SrcPos -> String
 ppSrcPos (SP f l c) = f ++ ":" ++ show l ++ ":" ++ show c
 
----------------------------------------------   Symbols   --------------------------------------------
+-------------------------------   Symbols   --------------------------------
 data QName n = QVar n | QTag n | QPolicy n | QGroup n | QType n
   deriving (Show, Eq, Ord, Functor, Foldable)
 
 class Symbol n where
   qsym :: n -> QSym
   pos :: n -> SrcPos
-  
----------------------------------------------   Module    --------------------------------------------
+
+-------------------------------   Modules   --------------------------------
 data ModuleDecl n = ModuleDecl SrcPos ModName [SectDecl n]
   deriving (Show, Eq, Functor, Foldable)
 
----------------------------------------------   Import     --------------------------------------------
+--------------------------------   Import   --------------------------------
 data ImportDecl n = ImportDecl SrcPos ModName
   deriving (Show, Eq, Functor, Foldable)
 
----------------------------------------------   Sections    --------------------------------------------
+-------------------------------   Sections   -------------------------------
 data SectDecl n = Imports [ImportDecl n]
                 | Types [TypeDecl n]
                 | Tags [TagDecl n]
@@ -69,8 +69,7 @@ data SectDecl n = Imports [ImportDecl n]
                 | Require [RequireDecl n]
                 deriving (Eq, Show, Functor, Foldable)
 
-----------------------------------------------   Type       --------------------------------------------
-
+--------------------------------   Types   --------------------------------
 data TypeDecl n = TypeDecl SrcPos n TagDataType
   deriving (Show, Eq, Ord, Functor, Foldable)
 
@@ -83,7 +82,7 @@ data TagDataType = TDTInt SrcPos (Maybe Int)
   deriving (Show,Eq,Ord)
 
 
-----------------------------------------------   Tag        --------------------------------------------
+--------------------------------    Tags   --------------------------------
 data TagDecl n = TagDecl SrcPos n [n]
   deriving (Show, Eq, Ord, Functor, Foldable)
 
@@ -110,8 +109,7 @@ data TagFieldBinOp = TFBOPlus
                    | TFBOMod
   deriving (Show, Eq, Ord)
 
----------------------------------------------   Set        --------------------------------------------
-
+--------------------------------    Set   --------------------------------
 data TagSetPat n = TSPAny SrcPos
                  | TSPExact SrcPos [Tag n]
                  | TSPAtLeast SrcPos [TagEx n]
@@ -124,7 +122,6 @@ data TagSetEx n = TSEVar  SrcPos n
                 | TSEIntersect SrcPos (TagSetEx n) (TagSetEx n)
   deriving (Show, Eq, Functor, Foldable)
 
-
 instance Symbol (TagDecl QSym) where
   qsym (TagDecl _ qn _) = qn
   pos  (TagDecl p _ _) = p
@@ -133,14 +130,14 @@ data TagEx n = TagEx SrcPos (Tag n)
              | TagPlusEx SrcPos (Tag n)
              | TagMinusEx SrcPos (Tag n)
   deriving (Show, Eq, Functor, Foldable)
-                
----------------------------------------------   Policy     --------------------------------------------
+
+--------------------------------  Policy   --------------------------------
 data PolicyLocality = PLLocal | PLGlobal
   deriving (Show, Eq)
 
 data PolicyDecl n = PolicyDecl SrcPos PolicyLocality n (PolicyEx n)
   deriving (Show, Eq, Functor, Foldable)
-           
+
 instance Symbol (PolicyDecl QSym) where
   qsym (PolicyDecl _ _ qn _) = qn
   pos  (PolicyDecl p _ _ _) = p
@@ -166,16 +163,15 @@ data PolicyEx n = PEVar SrcPos n
                 | PENoChecks SrcPos
   deriving (Show, Eq, Functor, Foldable)
 
----------------------------------------------    Requires      --------------------------------------------
-
+--------------------------------  Requires  --------------------------------
 data RequireDecl n = Init SrcPos [String] (InitSet n)
   deriving (Show, Eq, Functor, Foldable)
 
 data InitSet n = ISExact SrcPos [Tag n]
   deriving (Show, Eq, Functor, Foldable)
-           
 
----------------------------------------------   Group      --------------------------------------------
+
+--------------------------------   Groups   --------------------------------
 data GroupDecl a n = GroupDecl SrcPos n [GroupParam n] [GroupParam n] a
   deriving (Show, Eq, Functor, Foldable)
 
@@ -226,10 +222,9 @@ data RF =
   | X30
   | X31
   deriving (Eq, Ord, Show, Enum)
-           
-data OpSpec =   
+
+data OpSpec =
     AnyOp
   | Const Integer
   | Reg RF
     deriving (Eq, Ord, Show)
-             

@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -23,17 +23,17 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-{-# LANGUAGE RankNTypes, NamedFieldPuns #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module Tags (setTags,buildTagInfo,TagInfo(..)) where
 
--- -- import CommonTypes
-import CommonFn
-import AST
-import Symbols
 import qualified Data.Map as M
 import Data.Word
 import Data.List (sort,foldl')
-import Data.Maybe
+import Data.Maybe (mapMaybe)
+
+import AST
+import Symbols (ModSymbols,getGroup,getType,usedTags)
+import CommonFn (qualifyQSym,groupPrefix)
 
 
 -- This struct collects a bunch of info about the tags used by the current
@@ -72,35 +72,14 @@ data TagInfo =
           }
   deriving (Show)
 
-{-
-usedModules :: ModSymbols -> ModName -> Maybe (PolicyDecl QSym) -> S.Set ModName
-usedModules _ _ Nothing = S.empty
-usedModules ms topMod(Just pd) = policyDeclModules ms topMod pd
-
-policyDeclModules :: ModSymbols -> ModName -> PolicyDecl QSym -> S.Set ModName
-policyDeclModules ms modN (PolicyDecl _ _ qs pe) =
-  S.insert modN $ policyExModules ms modN pe
-
-policyExModules :: ModSymbols -> ModName -> PolicyEx QSym -> S.Set ModName
-policyExModules ms modN (PEVar _ v) = let (modN', p) = getPolicy ms modN v in  policyDeclModules ms modN' p
-policyExModules ms modN (PECompExclusive _ pe1 pe2) =
-  S.union (policyExModules ms modN pe1) (policyExModules ms modN pe2)
-policyExModules ms modN (PECompPriority _ pe1 pe2) =
-  S.union (policyExModules ms modN pe1) (policyExModules ms modN pe2)
-policyExModules ms modN (PECompModule _ pe1 pe2) =
-  S.union (policyExModules ms modN pe1) (policyExModules ms modN pe2)
-policyExModules ms modN (PERule _ (RuleClause _ og _ _ )) = let (modN', p) = getPolicy ms modN og in S.singleton modN'
--}
-
 setTags :: InitSet t -> [Tag t]
 setTags (ISExact _ ts) = ts
 
 -- This constructs the tag info.  It assumes the ModSymbols it is passed
 -- contains only the relevant modules.  Any tags in the modules it is passed
 -- will appear in the generated code.
-
 buildTagInfo :: ModSymbols -> [(ModName, QSym)] -> TagInfo
-buildTagInfo ms allSyms = 
+buildTagInfo ms allSyms =
   TagInfo {tiMaxTag,
            tiNumBitFields,
            tiNumDataArgs,
@@ -114,11 +93,11 @@ buildTagInfo ms allSyms =
   where
     mkTagName (mn, td) = qualifyQSym mn $ qsym td
     tiMaxTag,tiNumBitFields,tiNumDataArgs :: Word32
-    tiMaxTag = minTagNumber + (fromIntegral $ length declaredTags) - 1
+    tiMaxTag = minTagNumber + (fromIntegral $ length declaredTags)
     tiNumBitFields = 1 + (div tiMaxTag 32)
     tiNumDataArgs = fromIntegral $ length $
        concatMap (\(_, TagDecl _ _ args) -> args) declaredTags
-    
+
     -- This is all the tags that are explicitly declared in modules that this
     -- policy uses bits from, plus fake declarations for the opgroups, since
     -- they are really tags.
@@ -136,11 +115,6 @@ buildTagInfo ms allSyms =
         grpDecls _ = Nothing
         makeOGDecl :: GroupDecl a QSym -> TagDecl QSym
         makeOGDecl (GroupDecl sp nm _ _ _) = TagDecl sp (groupPrefix nm) []
-        
---    relevantTags :: [TagDecl QSym]
---    relevantTags = sort $
---      mapMaybe (\tdcl -> if S.member (qsym tdcl) usedTags then Just tdcl else Nothing)
---               declaredTags
 
     findTypeDef :: ModName -> QSym -> TypeDecl QSym
     findTypeDef modN qs = let (_, td) = getType ms modN qs in td
@@ -154,6 +128,6 @@ buildTagInfo ms allSyms =
         folder (accMap,nextPos) (modN, TagDecl _ nm typs) =
           (M.insert (qualifyQSym modN nm) (zip [nextPos..] (map (findTypeDef modN) typs)) accMap,
            (fromIntegral $ length typs) + nextPos)
-        
+
 minTagNumber :: Word32
-minTagNumber = 16
+minTagNumber = 0

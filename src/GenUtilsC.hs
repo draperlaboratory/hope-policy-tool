@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -23,43 +23,33 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NamedFieldPuns #-}
-module GenUtilsC where
-
-import GenUtils
-import AST
-import CommonFn
-import Tags
-
-import Language.C.Syntax
-import Language.C.Quote.GCC
+module GenUtilsC (writeUtilsCFile) where
 
 import Data.Word
 import qualified Data.Map as M
 
+import Language.C.Syntax
+import Language.C.Quote.GCC
 
--- --------------------------------------------------------------------------------------
+import AST
+import GenUtils (renderC,fmt)
+import CommonFn (tagString,tagName,unqualSymStr,tab)
+import Tags     (TagInfo(..))
 
---      policy_utils.c implementation
-
-writeUtilsCFile
-  :: FilePath
-     -> TagInfo
-     -> IO ()
-
+writeUtilsCFile :: FilePath -> TagInfo -> IO ()
 writeUtilsCFile cFile (tinfo@(TagInfo {tiTagNames})) =
-  writeFile cFile $ unlines $                          -- Write the impl file, consisting of:
-  cHeader ++ (blank 1) ++                              -- top of file includes
+  writeFile cFile $ unlines $
+  cHeader ++ ["\n"] ++
   [renderC $ tagArgsToString tinfo] ++
   [renderC $ tagToString tiTagNames] ++
   [renderC tagSetToString] ++
-  printTagSetFn ++ (blank 1) ++
-  printTagSetDebug ++ (blank 1) ++
-  printDebug ++ (blank 1) ++
+  printTagSetFn ++ ["\n"] ++
+  printTagSetDebug ++ ["\n"] ++
+  printDebug ++ ["\n"] ++
   cFooter
-  
+
 -- top of policy_impl.c
 cHeader,cFooter :: [String]
 cHeader = [ "#include \"policy_utils.h\""
@@ -114,12 +104,12 @@ tagArgsToString tinfo =
 
     printArg :: Word32 -> [Stm]
     printArg w = [cstms|
-       printed += snprintf(buf, buf_len - printed, " 0x%x", (unsigned int)(ts -> tags[$exp:w]));
+       printed += snprintf(buf, buf_len - printed, " 0x%x",
+                           (unsigned int)(ts -> tags[$exp:w]));
        if (printed >= buf_len) {
          return printed;
        }
     |]
-      
 
 -- tagSetToString takes in a tag set, a buffer, and the size of that buffer (in
 -- bytes).  The return value is usually the number of ints consumed in the
@@ -150,7 +140,7 @@ tagSetToString = [cedecl|
     }
 
     cursor[0] = '{';
-    
+
     cursor++;
     consumed++;
 
@@ -197,7 +187,7 @@ tagSetToString = [cedecl|
         // print tag arg
         meta_chars = meta_args_to_string(ts,i,cursor,buf_len-consumed);
         consumed += meta_chars;
-        
+
         if(consumed > buf_len) {
           buf[buf_len-1]='\0';
           return consumed;
@@ -213,7 +203,7 @@ tagSetToString = [cedecl|
       buf[buf_len-1] = '\0';
       return (consumed+3);
     }
-    
+
     cursor[0] = '}';
     cursor[1] = '\0';
 
@@ -227,7 +217,7 @@ tagToString tags = [cedecl|
     if(buf == NULL || buf_len <= 0) {
       return 0;
     }
-    
+
     switch(tag) {
       $stms:(concatMap tagCase tags)
     }
@@ -269,12 +259,11 @@ printTagSetFn = [ "void print_meta_set(const meta_set_t *meta_set){"
                , tab 1 ++ "printm(\"%s\\n\", name);"
                , "}"
                ]
-  
+
 printDebug :: [String]
 printDebug = [ tab 1 ++ "// print the contents of the input vector"
              , tab 0 ++ "void print_debug(const meta_set_t *pc, const meta_set_t *ci, const meta_set_t *rs1, const meta_set_t *rs2, const meta_set_t *rs3, const meta_set_t *mem){"
              , tab 1 ++ ""
---             , fmt 1 "printm(\"Sub-Instruction: %d\\n\", subinstr);"
              , fmt 1 "printm(\"PC: %x:\", pc);"
              , tab 1 ++ "print_meta_set(pc);"
              , fmt 1 "printm(\"CI: %x:\", ci);"
@@ -287,8 +276,6 @@ printDebug = [ tab 1 ++ "// print the contents of the input vector"
              , tab 1 ++ "print_meta_set(mem);"
              , tab 0 ++ "}"
              ]
-
-
 
 logger :: [String]
 logger = ["void printm(const char *fmt, ...){"

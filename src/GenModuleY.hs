@@ -24,22 +24,16 @@
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
 {-# LANGUAGE OverloadedStrings #-}
-module GenModuleY where
+module GenModuleY (writeModuleYFile) where
 
 import Data.Yaml
 
-import Symbols
-import CommonFn
+import Symbols  (ModSymbols)
+import CommonFn (dotName)
 
-
--- --------------------------------------------------------------------------------------
-
---      .h header
-writeModYFile
-  :: FilePath
-     -> ModSymbols
-     -> IO ()
-writeModYFile yFile symbols = encodeFile yFile $ object [ "Modules"     .= mods]
+writeModuleYFile :: FilePath -> ModSymbols -> IO ()
+writeModuleYFile yFile symbols =
+  encodeFile yFile $ object [ "Modules" .= mods]
   where
     mods :: [Value]
     mods = map (\m->object ["name" .= m]) ms
