@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -25,90 +25,78 @@
  -}
 module Generator where
 
---import Numeric
-import System.FilePath
-import System.IO
-import System.Directory
+import System.FilePath  ((</>),addTrailingPathSeparator)
+import System.IO        (hPutStrLn,stderr)
+import System.Directory (createDirectoryIfMissing)
 
 import AST
-import CommonFn
-import CommonTypes
-import SrcPrinter
-import Symbols
-import Debug
-import Tags
-import Validate
+import GenUtils    (fmt)
+import CommonFn    (dotName,unqualSymStr,qualSymStr,dash)
+import CommonTypes (Options(..))
+import SrcPrinter  (printPolicy)
+import Symbols     (ModSymbols,SymbolTable(..),UsedSymbols)
+import Tags        (TagInfo(..),buildTagInfo)
+import Validate    (nubSymbols)
 
 -- C code Templates for the generator:
-import GenRuleC
-import GenRuleH
-import GenUtilsC
-import GenUtilsH
-import GenMetaH
+import GenRuleC    (writeRuleCFile)
+import GenRuleH    (writeRuleHFile)
+import GenUtilsC   (writeUtilsCFile)
+import GenUtilsH   (writeUtilsHFile)
+import GenMetaH    (writeMetaHFile)
 import GenMetaSetC (writeMetaSetCFile)
 import GenMetaSetH (writeMetaSetHFile)
 
 -- Runtime encoding information
-import GenMetaY
-import GenModuleY
-import GenInitY
-import GenGroupY
-import GenEntityY
+import GenMetaY   (writeMetaYFile)
+import GenModuleY (writeModuleYFile)
+import GenInitY   (writeInitYFile)
+import GenGroupY  (writeGroupYFile)
+import GenEntityY (writeEntityYFile)
 
-{-                 
-genSrcFiles :: Options -> [ModuleDecl QSym] -> IO ()
-genSrcFiles opts modules =
-  let srcDir = optOutputDir opts in do
-    hPutStrLn stderr $ "Root module dir: " ++ srcDir
-    createDirectoryIfMissing True $ srcDir
-    mapM_ (genModule opts) modules
--}
 genSymbolsFile :: ModSymbols -> IO ()
 genSymbolsFile modules =
   let file = "symbols.txt" in do
     hPutStrLn stderr $ "Debug: Symbols from all modules can be found in: " ++ file
     writeFile file $ unlines $ syms
+  where
+    syms = concatMap printModuleSymbols modules
+
+    printModuleSymbols :: (ModName, SymbolTable QSym) -> [String]
+    printModuleSymbols (qpn, st) = ["", dotName qpn] ++
+      printTable "Metadata" tagSyms ++
+      printTable "Policies" policySyms ++
+      printTable "Groups" groupSyms
       where
-        syms = concatMap printModuleSymbols modules
-        
+        printTable tNm tFn =  header tNm $ map (unqualSymStr . fst) $ tFn st
+
+    header :: String -> [String] -> [String]
+    header _ [] = []
+    header nm strs =
+      map (fmt 1) $ [dash ++ " " ++ nm ++ " " ++ dash] ++ strs
+
 genASTFile :: Maybe (PolicyDecl QSym) -> IO ()
 genASTFile Nothing =
   let file = "ast.txt" in do
     writeFile file $ unlines []
 genASTFile (Just policy) =
   let file = "ast.txt" in do
-    hPutStrLn stderr $ "Debug: AST for " ++ (qualSymStr $ qsym policy) ++ " can be found in: " ++ file
+    hPutStrLn stderr $ "Debug: AST for " ++ (qualSymStr $ qsym policy)
+                    ++ " can be found in: " ++ file
     writeFile file $ unlines $ ast
       where
         ast = printPolicy policy
-{-        
-genModule :: Options -> ModuleDecl QSym -> IO ()
-genModule opts md =
-  let modDir = foldl (</>) (optOutputDir opts) (moduleDirs md)
-      modFile = modDir </> (moduleName md) <.> "dpl" in do
-    hPutStrLn stderr $ "Generating: " ++ modFile
-    writeFile modFile $ unlines $ printModule md
--}
 
 genFiles :: Options
          -> ModSymbols
-         -> [(ModName, QSym)]
+         -> UsedSymbols
          -> [(ModName, QSym)]
          -> ModName
          -> Maybe (PolicyDecl QSym)
          -> IO ()
 genFiles opts allModSymTables polSyms requireSyms topMod policy = let
-
-  {- No longer needed, 
-    relevantModules :: S.Set ModName
-    relevantModules = S.fromList usedModules
-  
-    symbols :: ModSymbols
-    symbols = filter (\(mn,_) -> S.member mn relevantModules) allModSymTables
-    -}
--- Use this instead
     allUsedSyms = nubSymbols (polSyms ++ requireSyms)
-  
+
     tagSetHFile = path </> "include" </> (optFileName opts) ++ "_meta_set.h"
     tagSetCFile = path </> "src" </> (optFileName opts) ++ "_meta_set.c"
 
@@ -135,9 +123,8 @@ genFiles opts allModSymTables polSyms requireSyms topMod policy = let
     tagInfo = buildTagInfo allModSymTables allUsedSyms
 
     targetPath = optTargetDir opts
-    
   in do
-  -- make directory
+    -- make directory
     createDirectoryIfMissing True $ path
     createDirectoryIfMissing True $ path </> "src"
     createDirectoryIfMissing True $ path </> "include"
@@ -150,7 +137,8 @@ genFiles opts allModSymTables polSyms requireSyms topMod policy = let
 
       -- policy_rule files
     hPutStrLn stderr $ "Generating: " ++ ruleCFile
-    writeRuleCFile ruleCFile debug profile logging topMod policy allModSymTables allUsedSyms tagInfo
+    writeRuleCFile ruleCFile debug profile logging topMod policy
+                   allModSymTables allUsedSyms tagInfo
 
     hPutStrLn stderr $ "Generating: " ++ ruleHFile
     writeRuleHFile ruleHFile debug
@@ -158,17 +146,17 @@ genFiles opts allModSymTables polSyms requireSyms topMod policy = let
       -- policy_utils files
     hPutStrLn stderr $ "Generating: " ++ utilsCFile
     writeUtilsCFile utilsCFile tagInfo
-    
+
     hPutStrLn stderr $ "Generating: " ++ utilsHFile
     writeUtilsHFile utilsHFile
-    
+
       -- policy_metadata files
     hPutStrLn stderr $ "Generating: " ++ metaHFile
     writeMetaHFile metaHFile tagInfo
     hPutStrLn stderr $ "Generating: " ++ metaYFile
     writeMetaYFile metaYFile tagInfo
     hPutStrLn stderr $ "Generating: " ++ modYFile
-    writeModYFile modYFile allModSymTables
+    writeModuleYFile modYFile allModSymTables
     hPutStrLn stderr $ "Generating: " ++ groupsYFile
     writeGroupYFile groupsYFile allModSymTables allUsedSyms
     hPutStrLn stderr $ "Generating: " ++ initYFile

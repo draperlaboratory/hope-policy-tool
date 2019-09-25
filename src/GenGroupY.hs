@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -24,42 +24,45 @@
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
 {-# LANGUAGE OverloadedStrings #-}
-module GenGroupY where
+module GenGroupY (writeGroupYFile) where
 
-import Data.List
+import Data.List.Extra (groupSortOn, nubSort)
 import Data.Yaml
---import qualified Data.HashMap.Lazy as M
 
 import Data.Text (Text, pack)
 
 import AST
-import Symbols
---import Tags
-import CommonFn
+import Symbols  (ModSymbols,UsedSymbols,usedGroups,moduleForQSym)
+import CommonFn (qualSymStr,qualifyQSym,groupPrefix)
 
-
--- --------------------------------------------------------------------------------------
-
---      .h header
-writeGroupYFile
-  :: FilePath
-  -> ModSymbols
-  -> UsedSymbols
-  -> IO ()
-writeGroupYFile yFile ms us = encodeFile yFile $ object [ "Groups"     .= groups]
+writeGroupYFile :: FilePath -> ModSymbols -> UsedSymbols -> IO ()
+writeGroupYFile yFile ms us =
+  encodeFile yFile $ object [ "Groups" .= groups]
   where
+    groups :: Value
     groups = object $ map (uncurry (.=)) $ combineInst
+
+    combineInst :: [(Text,[String])]
     combineInst = concatMap merge groupByInstruction
+
     merge :: [(Text, String)] -> [(Text, [String])]
     merge [] = []
-    merge ls = let (is, as) = unzip ls in [(head is, nub $ sort as)]
+    merge ls = let (is, as) = unzip ls in [(head is, nubSort as)]
+
     groupByInstruction :: [[(Text, String)]]
-    groupByInstruction = groupWith fst $ sortWith fst $ flatten $ groupList
+    groupByInstruction = groupSortOn fst $ flatten $ groupList
+
     groupList :: [(ModName, GroupDecl [ISA] QSym)]
     groupList = usedGroups ms us
+
     flatten :: [(ModName, GroupDecl [ISA] QSym)] -> [(Text, String)]
     flatten = concatMap instGroups
+
     instGroups :: (ModName, GroupDecl [ISA] QSym) -> [(Text, String)]
-    instGroups (mn, GroupDecl _ qs _ _ insts) = zip (map asm insts) (repeat $ qualSymStr $ qualifyQSym (moduleForQSym ms mn qs) $ groupPrefix qs)
+    instGroups (mn, GroupDecl _ qs _ _ insts) =
+      zip (map asm insts)
+          (repeat $ qualSymStr $ qualifyQSym (moduleForQSym ms mn qs)
+                               $ groupPrefix qs)
+
     asm :: ISA -> Text
     asm (Asm _ i _) = pack i

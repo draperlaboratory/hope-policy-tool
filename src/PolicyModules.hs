@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -23,18 +23,17 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-module PolicyModules where
+module PolicyModules (getAllModules) where
 
-
-import Data.Either
-
-import Data.Foldable
+import Data.Either (lefts,rights)
+import Data.Foldable (foldlM)
 import Control.Monad (when)
+
 import AST
-import CommonFn
-import CommonTypes
-import PolicyParser (polParse)
-import ErrorMsg
+import CommonFn (dotName,importS)
+import CommonTypes (Options(..))
+import PolicyParser (polParse,parseDotName)
+import ErrorMsg (ErrMsg)
 
 
 getAllModules :: Options -> [String] -> IO (Either [ErrMsg] [ModuleDecl QSym])
@@ -65,15 +64,15 @@ getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
           let imports = getImports mdcl
           foldlM getModule (m:ms) imports
         Left e -> error ("Error parsing module: " ++ e)
-    
+
 getModules _ _ = return [Left "Unable to locate top level module" ]
-                
+
 getImports :: ModuleDecl QSym -> [ModName]
-getImports (ModuleDecl _ _ sects) = map importName $ sect importS sects
+getImports (ModuleDecl _ _ sects) = map importName $ concatMap importS sects
   where
     importName (ImportDecl _ qn) = qn
 
-alreadyFound :: ModName -> [Either a (ModuleDecl t)] -> Bool    
+alreadyFound :: ModName -> [Either a (ModuleDecl t)] -> Bool
 alreadyFound qn ms = isKnown qn $ rights ms
 
 isKnown :: ModName -> [ModuleDecl t] -> Bool
@@ -81,4 +80,3 @@ isKnown qn ms = or $ map (isModule qn) ms
 
 isModule :: ModName -> ModuleDecl t -> Bool
 isModule qn (ModuleDecl _ mn _) = qn == mn
-

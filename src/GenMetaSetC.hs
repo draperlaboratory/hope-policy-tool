@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -31,8 +31,8 @@ import GenUtils(renderC)
 import Language.C.Syntax
 import Language.C.Quote.GCC
 
-{- The generated policy_meta_set.c file contains an implementation of sets of tags,
-   and some associated memory mangement.
+{- The generated policy_meta_set.c file contains various operations on tag
+   sets.
 
    The generated C is !!! NOT THREAD SAFE !!!
 -}
@@ -66,7 +66,8 @@ tagSetBody =
 
 msEqDef :: Definition
 msEqDef = [cedecl|
-  typename bool ms_eq(const typename meta_set_t* ms1, const typename meta_set_t* ms2) {
+  typename bool ms_eq(const typename meta_set_t* ms1,
+                      const typename meta_set_t* ms2) {
     if (ms1 == ms2) {
       return true;
     } else if (ms1 == 0 || ms2 == 0) {
@@ -91,7 +92,8 @@ msEqDef = [cedecl|
  -}
 msContainsDef :: Definition
 msContainsDef = [cedecl|
-  typename bool ms_contains(const typename meta_set_t* ms, const typename meta_t m) {
+  typename bool ms_contains(const typename meta_set_t* ms,
+                            const typename meta_t m) {
     if(ms == NULL || m > MAX_TAG) {
       return false;
     }
@@ -99,7 +101,7 @@ msContainsDef = [cedecl|
     int index = m / 32;
     int bit = m % 32;
     typename uint32_t mask = 1 << bit;
-    
+
     // It would be nice to just return the scrutinee of this if, but it
     // doesn't have the right type.
     if((ms->tags[index]) & mask) {

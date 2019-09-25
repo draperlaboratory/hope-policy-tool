@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -23,31 +23,25 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-module CommonFn where
+module CommonFn
+  (importS, typeS, tagS, policieS, groupS, requireS,
+   qualifyQSym, groupPrefix, modName, unqualQSym,
+   dotName, typeName, tagName, tagString,
+   policyDotName, moduleDotName, unqualSymStr, qualSymStr,
+   isQualified,
+   tab, hex, dash)
+where
 
-import Data.Either
+import Data.List (init,intercalate)
+import Data.Char (toLower)
 
-import Data.List
-import Data.Char
-import Data.String
 import Numeric
 
 import AST
--- -- import ErrorMsg
 
-moduleSects :: ModuleDecl t -> [SectDecl t]
-moduleSects (ModuleDecl _ _ s) = s
-
-sect :: forall a b (t :: * -> *).
-        Foldable t =>
-        (a -> [b]) -> t a -> [b]
-sect fn sects = concatMap fn sects
-
+{-
+ -  Accessors for portions of a module.
+ -}
 importS :: SectDecl t -> [ImportDecl t]
 importS (Imports s) = s
 importS _ = []
@@ -72,107 +66,25 @@ requireS :: SectDecl t -> [RequireDecl t]
 requireS (Require s) = s
 requireS _ = []
 
-checkTag :: QName n -> Bool
-checkTag (QTag _) = True
-checkTag _ = False
-
-checkVar :: QName n -> Bool
-checkVar (QVar _) = True
-checkVar _ = False
-
-requireSet :: RequireDecl n -> InitSet n
-requireSet (Init _ _ is) = is
-
-
-
-
-hasErrors :: [a] -> Bool
-hasErrors = not . null
-
-getErrors :: forall a b. [Either a b] -> [a]
-getErrors = lefts
-
-nubSort :: forall a. (Eq a, Ord a) => [a] -> [a]
-nubSort = nub.sort
-
-nubWith :: forall a a1. Eq a1 => (a -> a1) -> [a] -> [a]
-nubWith fn = nubBy (\a b -> fn a == fn b)
-
-sortWith :: forall a a1. Ord a1 => (a -> a1) -> [a] -> [a]
-sortWith fn = sortBy (\a b -> compare (fn a) (fn b))
-
-groupWith :: forall a a1. Eq a1 => (a -> a1) -> [a] -> [[a]]
-groupWith fn = groupBy (\a b -> fn a == fn b)
-
-byGroup :: forall t. QName t -> Bool
-byGroup (QGroup _) = True
-byGroup _ = False
-
+{-
+ - Constructing QSyms
+ -}
 qualifyQSym :: ModName -> QSym -> QSym
 qualifyQSym mn qs = fmap (mn++) qs
-
-qualifiers :: forall a. [a] -> [a]
-qualifiers = init
-
-unqualified :: forall t. [t] -> [t]
-unqualified qn = [last qn]
-
-parseDotName :: [Char] -> [String]
-parseDotName = words . map toWords
-  where
-    toWords '.' = ' '
-    toWords c = c
-
-parseDashName :: [Char] -> [String]
-parseDashName = words . map toWords
-  where
-    toWords '-' = ' '
-    toWords c = c
-
-typeName :: QSym -> String
-typeName = reqName . map toLower . intercalate "_" . qName
-
-tagName :: QSym -> String
-tagName = reqName . intercalate "_" . qName
-
-tagString :: QSym -> String
-tagString = intercalate "." . qName
-
-reqFnName :: String -> String
-reqFnName n = "pex_init" ++ reqName n ++ "_tag"
-
-reqName :: String -> String
-reqName n = map rep n
-  where
-    rep '/' = '_'
-    rep '-' = '_'
-    rep c = c
-
-handleName :: QSym -> [Char]
-handleName = ("TAGTYPE_" ++) . tagName
-
-catName :: QSym -> String
-catName = ("CATEGORY_" ++) . tagName
-
-rankName :: [String] -> String
-rankName = ("RANK_" ++) . intercalate "_"
 
 groupPrefix :: QSym -> QSym
 groupPrefix  = fmap ("og":)
 
-importDeclName :: forall t. ImportDecl t -> ModName
-importDeclName (ImportDecl _ qn) = qn
+modName :: QSym -> ModName
+modName = init . qName
+
+unqualQSym :: QSym -> QSym
+unqualQSym = fmap (\nms -> [last nms])
 
 {-
-tagDeclName :: forall t. TagDecl t -> t
-tagDeclName (TagDecl _ qn _) = qn
-
-
-policyDeclName (PolicyDecl _ qn _) = qn
-groupDeclName (GroupDecl _ qn _ _ _) = qn
--}
-
-qName :: forall t. QName t -> t
+ - Printing QSyms
+ -}
+qName :: QName t -> t
 qName (QType ns) = ns
 qName (QTag ns) = ns
 qName (QVar ns) = ns
@@ -182,24 +94,27 @@ qName (QGroup ns) = ns
 dotName :: [[Char]] -> [Char]
 dotName = intercalate "."
 
-policyName :: [[Char]] -> [Char]
-policyName = intercalate "."
+typeName :: QSym -> String
+typeName = reqName . map toLower . intercalate "_" . qName
+
+tagName :: QSym -> String
+tagName = reqName . intercalate "_" . qName
+
+tagString :: QSym -> String
+tagString = dotName . qName
+
+reqName :: String -> String
+reqName n = map rep n
+  where
+    rep '/' = '_'
+    rep '-' = '_'
+    rep c = c
 
 policyDotName :: PolicyDecl QSym -> String
 policyDotName = dotName . qName . qsym
 
-moduleQName :: forall t. ModuleDecl t -> ModName
-moduleQName (ModuleDecl _ mn _) = mn
-
-moduleDotName :: forall t. ModuleDecl t -> [Char]
-moduleDotName = dotName . moduleQName
-
-moduleName :: forall t. ModuleDecl t -> String
-moduleName = last . moduleQName
-
-moduleDirs :: forall t. ModuleDecl t -> [String]
-moduleDirs = qualifiers . moduleQName
-
+moduleDotName :: ModuleDecl t -> [Char]
+moduleDotName (ModuleDecl _ mn _) = dotName mn
 
 unqualSymStr :: QSym -> String
 unqualSymStr qSym = last $ qName qSym
@@ -207,57 +122,20 @@ unqualSymStr qSym = last $ qName qSym
 qualSymStr :: QSym -> String
 qualSymStr qSym = dotName $ qName qSym
 
-modSymStr :: QSym -> String
-modSymStr qSym = dotName $ qName qSym
-
-eitherErrors :: forall a b. [Either a b] -> [a]
-eitherErrors = lefts
-
-modName :: QSym -> ModName
-modName = qualifiers . qName
-
-
-unqualQSym :: QSym -> QSym
-unqualQSym = fmap unqualified
-
+{-
+ - Analyzing qsyms
+ -}
 isQualified :: QSym -> Bool
 isQualified qs = length (qName qs) /= 1
 
-
-mkTag :: [Char] -> [Char]
-mkTag [] = []
-mkTag (c:cs) = toUpper c : cs
-
-mkVar :: [Char] -> [Char]
-mkVar [] = []
-mkVar (c:cs) = toLower c : cs
-
+{-
+ - Other printing stuff
+ -}
 tab :: Int -> [Char]
 tab n = replicate (n*4) ' '
-
-mkComma :: [String] -> String
-mkComma = intercalate ", "
-
-mkCurly :: String -> String
-mkCurly eq = "{" ++ eq ++ "}"
-
-mkBracket :: String -> String
-mkBracket eq = "[" ++ eq ++ "]"
-
---mkParen [] = ""
-mkParen :: forall a. Data.String.IsString [a] => [a] -> [a]
-mkParen eq = "(" ++ eq ++ ")"
-
-pad :: forall (t :: * -> *) a. Foldable t => Int -> t a -> [Char]
-pad n l = replicate (n-length l) ' '
 
 hex :: (Show n, Integral n) => n -> String
 hex n = "0x" ++ (showHex n) ""
 
 dash :: String
 dash = replicate 32 '-'
-
-camelToUnder :: [Char] -> [Char]
-camelToUnder [] = []
-camelToUnder (c:cs) | isUpper c = '_':(toLower c):(camelToUnder cs)
-camelToUnder (c:cs) = c:(camelToUnder cs)

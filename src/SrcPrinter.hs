@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -23,55 +23,53 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-module SrcPrinter where
+module SrcPrinter (printPolicy,printRuleClause,printTagFieldBinOp) where
 
-import Data.List
+import Data.List (intercalate)
 
 import AST
-import GenUtils
-import CommonFn
+import GenUtils (fmt)
+import CommonFn (moduleDotName,unqualSymStr,qualSymStr)
 
-
-printModule :: ModuleDecl QSym -> [String]
-printModule md@(ModuleDecl _ _ _) = [ "module " ++ (moduleDotName md) ++ ":", ""] -- <:> concatMap printSect sects
 
 printPolicy :: PolicyDecl QSym -> [String]
-printPolicy (PolicyDecl _ _ pqn ex) = [fmt 1 (unqualSymStr pqn) ++ " = "] ++ (map (fmt 2) (printPolicyEx ex))
+printPolicy (PolicyDecl _ _ pqn ex) =
+     [fmt 1 (unqualSymStr pqn) ++ " = "]
+  ++ (map (fmt 2) (printPolicyEx ex))
 
 printPolicyEx :: PolicyEx QSym -> [String]
 printPolicyEx (PERule _ clause) = [printRuleClause clause]
-printPolicyEx (PECompExclusive _ lhs rhs) = printPolicyEx lhs ++ ["]["] ++ printPolicyEx rhs
-printPolicyEx (PECompPriority _ lhs rhs) = printPolicyEx lhs ++ ["^"] ++ printPolicyEx rhs
-printPolicyEx (PECompModule _ lhs rhs) = printPolicyEx lhs ++ ["&"] ++ printPolicyEx rhs
+printPolicyEx (PECompExclusive _ lhs rhs) =
+  printPolicyEx lhs ++ ["]["] ++ printPolicyEx rhs
+printPolicyEx (PECompPriority _ lhs rhs) =
+  printPolicyEx lhs ++ ["^"] ++ printPolicyEx rhs
+printPolicyEx (PECompModule _ lhs rhs) =
+  printPolicyEx lhs ++ ["&"] ++ printPolicyEx rhs
 printPolicyEx (PEVar _ qn) = [qualSymStr qn]
 printPolicyEx (PENoChecks _) = ["__NO_CHECKS"]
 
 printRuleClause :: RuleClause QSym -> String
 printRuleClause (RuleClause _ og pats _) =
-  (last $ qName og) ++ "<"
+  (unqualSymStr og) ++ "<"
      ++ (intercalate ", " $ map printPat pats) ++ ">"
 
 printPat :: BoundGroupPat QSym -> String
 printPat (BoundGroupPat _ nm tsp) =
-  (last $ qName nm) ++ "=" ++ printTagSetPat tsp
+  (unqualSymStr nm) ++ "=" ++ printTagSetPat tsp
 
 printTagSetPat :: TagSetPat QSym -> String
 printTagSetPat (TSPAny _) = "_"
---printTagSetPat (TSPVar _ nm) = last $ qName nm
 printTagSetPat (TSPExact _ tgs) =
   "{" ++ (intercalate ", " $ map printTag tgs) ++ "}"
-printTagSetPat (TSPAtLeast _ tes) = 
+printTagSetPat (TSPAtLeast _ tes) =
   "{" ++ (intercalate ", " $ map printTagEx tes) ++ "}"
---printTagSetPat (TSPVarSet _ nm tsp) = (last $ qName nm) ++ "@" ++ printTagSetPat tsp
-  
+
 printTag :: Tag QSym -> String
 printTag (Tag _ nm args) =
-  intercalate " " $ (last $ qName nm) : map printTagField args
+  intercalate " " $ (unqualSymStr nm) : map printTagField args
 
 printTagField :: TagField QSym -> String
-printTagField (TFVar _ n) = last $ qName n
+printTagField (TFVar _ n) = unqualSymStr n
 printTagField (TFNew _) = "new"
 printTagField (TFAny _) = "_"
 printTagField (TFInt _ i) = show i

@@ -1,12 +1,11 @@
 {-# OPTIONS_GHC -w #-}
-module PolicyParser (polParse) where
+module PolicyParser (polParse,parseDotName) where
 
-  
 import PolicyLexer
 import AST
 import CommonTypes (Options(..))
-import CommonFn (dotName)
 import ErrorMsg (ErrMsg(..))
+import Data.List (intercalate)
 import System.FilePath ((</>),(<.>),joinPath)
 import System.Directory (doesFileExist)
 import Control.Monad (foldM)
@@ -1247,7 +1246,7 @@ happyReduction_1 ((HappyAbsSyn5  happy_var_4) `HappyStk`
 	(HappyTerminal happy_var_1) `HappyStk`
 	happyRest)
 	 = HappyAbsSyn4
-		 (ModuleDecl (getSrcPos happy_var_1) (qualifyName happy_var_2) (reverse happy_var_4)
+		 (ModuleDecl (getSrcPos happy_var_1) (tokenToParsedName happy_var_2) (reverse happy_var_4)
 	) `HappyStk` happyRest
 
 happyReduce_2 = happySpecReduce_1  5 happyReduction_2
@@ -1337,7 +1336,7 @@ happyReduction_11 _ _  = notHappyAtAll
 happyReduce_12 = happySpecReduce_1  8 happyReduction_12
 happyReduction_12 (HappyTerminal happy_var_1)
 	 =  HappyAbsSyn8
-		 (ImportDecl (getSrcPos happy_var_1) (qualifyName happy_var_1)
+		 (ImportDecl (getSrcPos happy_var_1) (tokenToParsedName happy_var_1)
 	)
 happyReduction_12 _  = notHappyAtAll 
 
@@ -2244,7 +2243,7 @@ happyReduction_137 (HappyAbsSyn47  happy_var_3)
 	(HappyTerminal happy_var_2)
 	(HappyTerminal happy_var_1)
 	 =  HappyAbsSyn46
-		 (Init (getSrcPos happy_var_1) (qualifyName happy_var_2) happy_var_3
+		 (Init (getSrcPos happy_var_1) (tokenToParsedName happy_var_2) happy_var_3
 	)
 happyReduction_137 _ _ _  = notHappyAtAll 
 
@@ -2368,15 +2367,8 @@ happySeq = happyDontSeq
 happyError :: P a
 happyError = alexError "parse error."
 
-separate :: String -> [String]
-separate = sep [] []
-  where
-    sep :: [String] -> String -> String -> [String]
-    sep acc []    []      = reverse acc
-    sep acc chunk []      = reverse (reverse chunk : acc)
-    sep acc []    ('.':s) = sep acc [] s
-    sep acc chunk ('.':s) = sep (reverse chunk : acc) [] s
-    sep acc chunk (c:s)   = sep acc (c:chunk) s
+parseDotName :: String -> [String]
+parseDotName = words . map (\c -> if c == '.' then ' ' else c)
 
 getName :: Located Token -> String
 getName (L _ (TID nm)) = nm
@@ -2384,8 +2376,8 @@ getName (L _ t) = error $
      "Impossible: parser encountered non-identifier token ("
   ++ show t ++ ") after checking for identifier in getName."
 
-qualifyName :: Located Token -> [String]
-qualifyName t = separate $ getName t
+tokenToParsedName :: Located Token -> [String]
+tokenToParsedName t = parseDotName $ getName t
 
 getIntLit :: Located Token -> Int
 getIntLit (L _ (TIntLit i)) = i
@@ -2398,10 +2390,10 @@ polParse opts qmn = do
   impls <- findImplementations
   case impls of
     [] -> error $ "Couldn't find file corresponding to module "
-               ++ dotName qmn ++ ".  Searched:\n"
+               ++ intercalate "." qmn ++ ".  Searched:\n"
                ++ concatMap (\fp -> "  " ++ fp ++ "\n") moduleDirs
     _:_:_ -> error $ "Found multiple conflicting implementations of module "
-                   ++ dotName qmn ++ " at:\n"
+                   ++ intercalate "." qmn ++ " at:\n"
                    ++ concatMap (\fp -> "  " ++ fp ++ "\n") impls
     impl:[] -> do
       putStrLn ("Reading file: " ++ impl)

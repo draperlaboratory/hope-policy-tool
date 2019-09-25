@@ -1,8 +1,8 @@
 {-
  - Copyright © 2017-2018 The Charles Stark Draper Laboratory, Inc. and/or Dover Microsystems, Inc.
- - All rights reserved. 
+ - All rights reserved.
  -
- - Use and disclosure subject to the following license. 
+ - Use and disclosure subject to the following license.
  -
  - Permission is hereby granted, free of charge, to any person obtaining
  - a copy of this software and associated documentation files (the
@@ -11,10 +11,10 @@
  - distribute, sublicense, and/or sell copies of the Software, and to
  - permit persons to whom the Software is furnished to do so, subject to
  - the following conditions:
- - 
+ -
  - The above copyright notice and this permission notice shall be
  - included in all copies or substantial portions of the Software.
- - 
+ -
  - THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  - EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  - MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -23,25 +23,27 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-module Validate where
+module Validate (locateMain,
+                 validateMain, validateModuleRequires,
+                 nubSymbols) where
 
-import Data.Either
+import Data.Either (lefts,rights)
+import Data.List (nub, sort)
 
 import AST
-
-import CommonFn
-import ErrorMsg
 import Symbols
+import CommonFn (modName,dotName,unqualQSym)
+import ErrorMsg (ErrMsg,codingError)
+import PolicyParser (parseDotName)
 
--- Validate module
--- Perform error checking on policies and DPL modules
--- eventually will include type checking, currently only handles resolving symbol references
--- Takes policy list from cmd line and tries to find the 1 policy specified
--- Multiple policies are currently not supported
-locateMain ::
-     [String]
-  -> [(ModName, SymbolTable QSym)]
-  -> Either [ErrMsg] (ModName, PolicyDecl QSym)
+-- Validate module: Perform error checking on policies and DPL modules.
+-- Eventually will include type checking, currently only handles resolving
+-- symbol references.
+
+-- Takes policy list from cmd line and tries to find the 1 policy
+-- specified. Multiple policies are currently not supported.
+locateMain :: [String] -> [(ModName, SymbolTable QSym)]
+           -> Either [ErrMsg] (ModName, PolicyDecl QSym)
 locateMain [] _ = codingError "No policy case should be handled"
 locateMain (mainPolicy:[]) sts =
   case lookupPolicy sts modNm pol of
@@ -53,14 +55,11 @@ locateMain (mainPolicy:[]) sts =
     modNm = modName policyQSym
 locateMain _ _ = Left ["Too many policies on command line"]
 
--- Validate that all symbols are reachable from main policy
--- Starts from main policy decl and traverses the ast for the main policy looking up
--- each symbol in the ModSymbols and records errors or builds UsedSymbols list
-validateMain ::
-     [(ModName, SymbolTable QSym)]
-  -> ModName
-  -> PolicyDecl QSym
-  -> Either [ErrMsg] UsedSymbols
+-- Validate that all symbols are reachable from main policy.  Starts from main
+-- policy decl and traverses the ast for the main policy looking up each
+-- symbol in the ModSymbols and records errors or builds UsedSymbols list.
+validateMain :: [(ModName, SymbolTable QSym)] -> ModName -> PolicyDecl QSym
+             -> Either [ErrMsg] UsedSymbols
 validateMain ms mn pd =
   case lefts validationResults of
     [] -> Right $ nubSymbols $ rights validationResults
@@ -69,21 +68,15 @@ validateMain ms mn pd =
     validationResults = validatePolicyDecl ms mn pd []
 
 -- Helper Fns to do validation...
-validatePolicyDecl ::
-     ModSymbols
-  -> ModName
-  -> PolicyDecl QSym
-  -> [(Either ErrMsg (ModName, QSym))]
-  -> [(Either ErrMsg (ModName, QSym))]
+validatePolicyDecl :: ModSymbols -> ModName -> PolicyDecl QSym
+                   -> [(Either ErrMsg (ModName, QSym))]
+                   -> [(Either ErrMsg (ModName, QSym))]
 validatePolicyDecl ms mn pd@(PolicyDecl _ _ _ pex) es =
   validatePolicyEx ms mn pex (es ++ [Right (mn, qsym pd)])
 
-validatePolicyEx ::
-     ModSymbols
-  -> ModName
-  -> PolicyEx QSym
-  -> [(Either ErrMsg (ModName, QSym))]
-  -> [(Either ErrMsg (ModName, QSym))]
+validatePolicyEx :: ModSymbols -> ModName -> PolicyEx QSym
+                 -> [(Either ErrMsg (ModName, QSym))]
+                 -> [(Either ErrMsg (ModName, QSym))]
 validatePolicyEx ms mn (PEVar _ x) es =
   case lookupPolicy ms mn x of
     Right (mn', pd) -> validatePolicyDecl ms mn' pd es
@@ -102,8 +95,8 @@ validatePolicyEx ms mn (PECompModule _ p1 p2) es = es2
     es2 = validatePolicyEx ms mn p2 es1
 validatePolicyEx ms mn rule es = foldr (validateQSym ms mn) es rule
 
-validateModuleRequires ::
-     ModSymbols -> [ModName] -> Either [ErrMsg] [(ModName, QSym)]
+validateModuleRequires :: ModSymbols -> [ModName]
+                       -> Either [ErrMsg] [(ModName, QSym)]
 validateModuleRequires ms mns =
   case lefts validationResults of
     [] -> Right $ nubSymbols $ rights validationResults
@@ -120,26 +113,19 @@ validateModuleRequires ms mns =
         Nothing -> [Left $ "Unable to locate module: " ++ (dotName mn)]
         Just st -> foldr (validateRequires ms mn) es $ requires st
 
-validateRequires ::
-     ModSymbols
-  -> ModName
-  -> RequireDecl QSym
-  -> [Either ErrMsg (ModName, QSym)]
-  -> [Either ErrMsg (ModName, QSym)]
+validateRequires :: ModSymbols -> ModName -> RequireDecl QSym
+                 -> [Either ErrMsg (ModName, QSym)]
+                 -> [Either ErrMsg (ModName, QSym)]
 validateRequires ms mn (Init _ _ (ISExact _ ts)) es = foldr tagLookup es ts
   where
-    tagLookup ::
-         Tag QSym
-      -> [Either ErrMsg (ModName, QSym)]
-      -> [Either ErrMsg (ModName, QSym)]
+    tagLookup :: Tag QSym
+              -> [Either ErrMsg (ModName, QSym)]
+              -> [Either ErrMsg (ModName, QSym)]
     tagLookup tgs res = foldr (validateQSym ms mn) res tgs
 
-validateQSym ::
-     ModSymbols
-  -> ModName
-  -> QSym
-  -> [Either ErrMsg (ModName, QSym)]
-  -> [Either ErrMsg (ModName, QSym)]
+validateQSym :: ModSymbols -> ModName -> QSym
+             -> [Either ErrMsg (ModName, QSym)]
+             -> [Either ErrMsg (ModName, QSym)]
 validateQSym ms mn qs@(QType _) es = es ++ [doLookup (lookupType ms mn) qs]
 validateQSym ms mn qs@(QTag _) es =
   case doLookup (lookupTag ms mn) qs of
@@ -149,12 +135,9 @@ validateQSym ms mn qs@(QPolicy _) es = es ++ [doLookup (lookupPolicy ms mn) qs]
 validateQSym ms mn qs@(QGroup _) es = es ++ [doLookup (lookupGroup ms mn) qs]
 validateQSym _ mn qs es = es ++ [Right (mn, qs)]
 
-validateType ::
-     ModSymbols
-  -> ModName
-  -> QSym
-  -> [Either ErrMsg (ModName, QSym)]
-  -> [Either ErrMsg (ModName, QSym)]
+validateType :: ModSymbols -> ModName -> QSym
+             -> [Either ErrMsg (ModName, QSym)]
+             -> [Either ErrMsg (ModName, QSym)]
 validateType ms mn qs es = foldr (validateQSym ms mn) es typs
   where
     (_, TagDecl _ _ typs) = getTag ms mn qs
@@ -166,6 +149,6 @@ doLookup fn qs =
     Right (mn, _) -> Right (mn, qs)
 
 nubSymbols :: [(ModName, QSym)] -> [(ModName, QSym)]
-nubSymbols = nubSort . map unqualify
+nubSymbols = nub . sort . map unqualify
   where
-    unqualify (mn, qs) = (mn, fmap unqualified qs)
+    unqualify (mn, qs) = (mn, unqualQSym qs)
