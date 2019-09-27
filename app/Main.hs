@@ -24,15 +24,22 @@
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
 
+{-# LANGUAGE TemplateHaskell #-}
+
 module Main where
 
 import System.IO             (hPutStrLn, stderr, stdout)
 import System.Environment    (getProgName,getArgs)
 import System.Exit           (exitWith,ExitCode(..),exitFailure,exitSuccess)
 import System.Console.GetOpt
+import System.Process (readProcess)
 import Control.Monad         (when)
+import Data.Char             (isSpace)
 import Data.List             (nub, sort)
 import Data.Either           (lefts)
+import Data.Version (showVersion)
+import Language.Haskell.TH (stringE,runIO)
+import Paths_policy_tool (version)
 
 import AST
 import PolicyModules (getAllModules)
@@ -42,12 +49,15 @@ import Validate      (locateMain, validateMain, validateModuleRequires)
 import CommonTypes   (Options(..), defaultOptions)
 import ErrorMsg      (ErrMsg)
 
+gitHash :: String
+gitHash = filter (not . isSpace) $(stringE =<< runIO (readProcess "git" ["rev-parse", "--short", "HEAD"] []))
+
 options :: [ OptDescr (Options -> IO Options) ]
 options =
     [ Option "v" ["version"]
         (NoArg
             (\_ -> do
-                hPutStrLn stderr "Policy Tool 42"
+                hPutStrLn stderr $ "Policy Tool v" ++ showVersion version ++ " ("++gitHash++")"
                 exitWith ExitSuccess))
         "Print random number"
 

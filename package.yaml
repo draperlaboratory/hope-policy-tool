@@ -34,6 +34,8 @@ dependencies:
 - unordered-containers
 - yaml
 - extra >= 1.6.6
+- process
+- template-haskell
 
 library:
   source-dirs: src
