@@ -36,6 +36,7 @@ dependencies:
 - extra >= 1.6.6
 - process
 - template-haskell
+- bytestring
 
 library:
   source-dirs: src
@@ -46,9 +47,6 @@ executables:
     source-dirs:         app
     ghc-options:
     - -Wall
-#    - -threaded
-#    - -rtsopts
-#    - -with-rtsopts=-N
     dependencies:
     - policy-tool
 
@@ -58,8 +56,5 @@ tests:
     source-dirs:         test
     ghc-options:
     - -Wall
-#    - -threaded
-#    - -rtsopts
-#    - -with-rtsopts=-N
     dependencies:
     - policy-tool
