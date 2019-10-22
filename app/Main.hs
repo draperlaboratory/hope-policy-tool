@@ -29,19 +29,19 @@
 module Main where
 
 import System.IO             (hPutStrLn, stderr, stdout)
-import System.IO.Error (IOError,ioeGetErrorString)
+import System.IO.Error       (IOError,ioeGetErrorString)
 import System.Environment    (getProgName,getArgs)
 import System.Exit           (exitWith,ExitCode(..),exitFailure,exitSuccess)
 import System.Console.GetOpt
-import System.Process (readProcess)
+import System.Process        (readProcess)
 import Control.Monad         (when)
-import Control.Exception (catch)
+import Control.Exception     (catch)
 import Data.Char             (isSpace)
 import Data.List             (nub, sort)
 import Data.Either           (lefts)
-import Data.Version (showVersion)
-import Language.Haskell.TH (stringE,runIO)
-import Paths_policy_tool (version)
+import Data.Version          (showVersion)
+import Language.Haskell.TH   (stringE,runIO)
+import Paths_policy_tool     (version)
 
 import AST
 import PolicyModules (getAllModules)
