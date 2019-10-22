@@ -29,11 +29,13 @@
 module Main where
 
 import System.IO             (hPutStrLn, stderr, stdout)
+import System.IO.Error (IOError,ioeGetErrorString)
 import System.Environment    (getProgName,getArgs)
 import System.Exit           (exitWith,ExitCode(..),exitFailure,exitSuccess)
 import System.Console.GetOpt
 import System.Process (readProcess)
 import Control.Monad         (when)
+import Control.Exception (catch)
 import Data.Char             (isSpace)
 import Data.List             (nub, sort)
 import Data.Either           (lefts)
@@ -50,14 +52,15 @@ import CommonTypes   (Options(..), defaultOptions)
 import ErrorMsg      (ErrMsg)
 
 gitHash :: String
-gitHash = filter (not . isSpace) $(stringE =<< runIO (readProcess "git" ["rev-parse", "--short", "HEAD"] []))
+gitHash = filter (not . isSpace) $(stringE =<< runIO (catch (readProcess "git" ["rev-parse", "--short", "HEAD"] [])
+                                                     (\e -> return $ ioeGetErrorString (e :: IOError))))
 
 options :: [ OptDescr (Options -> IO Options) ]
 options =
     [ Option "v" ["version"]
         (NoArg
             (\_ -> do
-                hPutStrLn stderr $ "Policy Tool v" ++ showVersion version ++ " ("++gitHash++")"
+                hPutStrLn stderr $ "Policy Tool v" ++ showVersion version ++ " (git revision: "++gitHash++")"
                 exitWith ExitSuccess))
         "Print random number"
 
