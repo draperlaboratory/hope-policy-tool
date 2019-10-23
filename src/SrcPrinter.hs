@@ -23,7 +23,10 @@
  - OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  - WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  -}
-module SrcPrinter (printPolicy,printRuleClause,printTagFieldBinOp) where
+module SrcPrinter 
+   (printPolicy, printRuleClause, printTagFieldBinOp,
+    printTag, printTagEx) 
+where
 
 import Data.List (intercalate)
 
