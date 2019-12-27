@@ -662,10 +662,13 @@ translatePolicy dbg ms ogMap pd tagInfo modN (PECompPriority l p1 p2) =
   translatePolicy dbg ms ogMap pd tagInfo modN (PECompExclusive l p1 p2)
 translatePolicy _ _ _ _ _ _ (PENoChecks _) =
   [citems| return $id:policySuccessName;|]
-translatePolicy _ _ _ _ _ _ (PECompModule _ _p1 _p2) =
-  error "Unsupported: PECompModule in translatePolicy"
+translatePolicy _ _ _ _ _ _ (PECompModule loc _ _) =
+  error $ "Unsupported: PECompModule in translatePolicy at " ++ ppSrcPos loc
+translatePolicy _ _ _ _ _ _
+                (PERule _ (RuleClause loc _ _ (Just _) _)) =
+  error $ "Unsupported: rule guard at " ++  ppSrcPos loc
 translatePolicy dbg ms ogMap pd tagInfo modN
-                (PERule _ rc@(RuleClause _ ogrp rpat rres)) =
+                (PERule _ rc@(RuleClause _ ogrp rpat Nothing rres)) =
   [citems|
        if(ms_contains($id:ciArgName,$id:(tagName (qualifiedOpGrpMacro)))) {
          int $id:matchVar = $exp:patExp;

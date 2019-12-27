@@ -131,7 +131,31 @@ data TagEx n = TagEx SrcPos (Tag n)
              | TagMinusEx SrcPos (Tag n)
   deriving (Show, Eq, Functor, Foldable)
 
---------------------------------  Policy   --------------------------------
+-----------------------------  Rule Guards  ------------------------------
+data RuleGuard n = RGCompOp SrcPos RuleGuardCompOp
+                            (RuleGuardVal n) (RuleGuardVal n)
+                 | RGBoolOp SrcPos RuleGuardBoolOp
+                            (RuleGuard n) (RuleGuard n)
+                 | RGNot SrcPos (RuleGuard n)
+                 | RGTrue SrcPos
+                 | RGFalse SrcPos
+  deriving (Show, Eq, Functor, Foldable)
+
+data RuleGuardCompOp = RGLT | RGLE
+                     | RGGT | RGGE
+                     | RGEQ | RGNEQ
+  deriving (Show, Eq)
+
+data RuleGuardBoolOp = RGAnd | RGOr
+  deriving (Show, Eq)
+
+data RuleGuardVal n = RGVVar SrcPos n
+                    | RGVInt SrcPos Int
+                    | RGVBinOp SrcPos TagFieldBinOp
+                               (RuleGuardVal n) (RuleGuardVal n)
+  deriving (Show, Eq, Functor, Foldable)
+
+--------------------------------  Policy  --------------------------------
 data PolicyLocality = PLLocal | PLGlobal
   deriving (Show, Eq)
 
@@ -142,7 +166,10 @@ instance Symbol (PolicyDecl QSym) where
   qsym (PolicyDecl _ _ qn _) = qn
   pos  (PolicyDecl p _ _ _) = p
 
-data RuleClause n = RuleClause SrcPos n [BoundGroupPat n] (RuleResult n)
+data RuleClause n = RuleClause SrcPos n
+                               [BoundGroupPat n]
+                               (Maybe (RuleGuard n))
+                               (RuleResult n)
   deriving (Show, Eq, Functor, Foldable)
 
 data BoundGroupPat n = BoundGroupPat SrcPos n (TagSetPat n)
