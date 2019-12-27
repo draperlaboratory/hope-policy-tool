@@ -165,7 +165,7 @@ processMods opts topPolicyName = do
                 case validateMain symbols mainModule mainPolicyDecl of
                   Right uniqueSyms -> do
                     hPutStrLn stdout "Validated top-level policy.\n"
-                    when (optIR opts) $ genASTFile $ Just mainPolicyDecl
+                    when (optIR opts) $ genASTFile symbols
                     case validateModuleRequires symbols (uniqueMods uniqueSyms) of
                       Right uniqueReqs -> do
                         hPutStrLn stdout "Validated requires.\n"

@@ -14,10 +14,16 @@ clean:
 	stack clean
 
 parsers: alex happy
+parserdebug: alex happyInfo
 
 happy: src/PolicyParser.y.source
 	cp src/PolicyParser.y.source src/PolicyParser.y
 	happy -o src/PolicyParser.hs src/PolicyParser.y
+	rm src/PolicyParser.y
+
+happyInfo: src/PolicyParser.y.source
+	cp src/PolicyParser.y.source src/PolicyParser.y
+	happy -i -o src/PolicyParser.hs src/PolicyParser.y
 	rm src/PolicyParser.y
 
 alex: src/PolicyLexer.x.source
