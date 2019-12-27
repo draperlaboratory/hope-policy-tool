@@ -52,9 +52,10 @@ printPolicyEx (PEVar _ qn) = [qualSymStr qn]
 printPolicyEx (PENoChecks _) = ["__NO_CHECKS"]
 
 printRuleClause :: RuleClause QSym -> String
-printRuleClause (RuleClause _ og pats _) =
+printRuleClause (RuleClause _ og pats mguard _) =
   (unqualSymStr og) ++ "<"
-     ++ (intercalate ", " $ map printPat pats) ++ ">"
+     ++ (intercalate ", " $ map printPat pats)
+     ++ printMGuard mguard ++ ">"
 
 printPat :: BoundGroupPat QSym -> String
 printPat (BoundGroupPat _ nm tsp) =
@@ -91,3 +92,36 @@ printTagEx :: TagEx QSym -> String
 printTagEx (TagEx _ t) = printTag t
 printTagEx (TagPlusEx _ t) = "+" ++ printTag t
 printTagEx (TagMinusEx _ t) = "-" ++ printTag t
+
+printMGuard :: Maybe (RuleGuard QSym) -> String
+printMGuard Nothing = ""
+printMGuard (Just rg) = " | " ++ printGuard rg
+
+printGuard :: RuleGuard QSym -> String
+printGuard (RGCompOp _ cop rgv1 rgv2) =
+  "(" ++ printGVal rgv1 ++ printCompOp cop ++ printGVal rgv2 ++ ")"
+printGuard (RGBoolOp _ bop rg1 rg2) =
+  "(" ++ printGuard rg1 ++ printBoolOp bop ++ printGuard rg2 ++ ")"
+printGuard (RGNot _ rg) = "!" ++ printGuard rg
+printGuard (RGTrue _)   = "True"
+printGuard (RGFalse _)  = "False"
+
+printCompOp :: RuleGuardCompOp -> String
+printCompOp RGLT = " < "
+printCompOp RGLE = " <= "
+printCompOp RGGT = " > "
+printCompOp RGGE = " >= "
+printCompOp RGEQ = " == "
+printCompOp RGNEQ = " != "
+
+printBoolOp :: RuleGuardBoolOp -> String
+printBoolOp RGAnd = " && "
+printBoolOp RGOr  = " || "
+
+printGVal :: RuleGuardVal QSym -> String
+printGVal (RGVVar _ qsym) = unqualSymStr qsym
+printGVal (RGVInt _ i)    = show i
+printGVal (RGVBinOp _ tfbo rgv1 rgv2) =
+     "(" ++ printGVal rgv1 ++ " " ++ printTagFieldBinOp tfbo ++ " "
+  ++ printGVal rgv2 ++ ")"
+

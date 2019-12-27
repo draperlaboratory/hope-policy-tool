@@ -17,9 +17,13 @@ import Control.Monad (foldM)
 
 %name parseModule module
 
+%left '||'
+%left '&&'
+%nonassoc '==' '!=' '\<' '\<=' '>' '>='
 %left '+' '-'
 %left '*' '/' '%'
 %left '&' '^' '|'
+%right '!'
 
 %left '/\\' '\\/' '['
 
@@ -44,8 +48,19 @@ import Control.Monad (foldM)
   ':'              { L _ TColon }
   ','              { L _ TComma }
   '*'              { L _ TStar }
-  '\\/'             { L _ TUnion }
-  '/\\'             { L _ TIntersection }
+  '\\/'            { L _ TUnion }
+  '/\\'            { L _ TIntersection }
+
+  '\<='             { L _ TLE }
+  '\<'              { L _ TLT }
+  '>='             { L _ TGT }
+  '>'              { L _ TGE }
+  '!='             { L _ TNE }
+  '!'              { L _ TNot }
+  '||'             { L _ TOr }
+  '&&'             { L _ TAnd }
+  'True'           { L _ TTrue }
+  'False'          { L _ TFalse }
 
   'module'         { L _ TModule }
   'import'         { L _ TImport }
@@ -286,9 +301,10 @@ policyExp :: { PolicyEx QSym }
   | QNAME                     { PEVar (getSrcPos $1) (QPolicy [getName $1]) }
 
 policyRule :: { PolicyEx QSym }
-  : QNAME '(' boundGroupPats ruleResult ')'
+  : QNAME '(' boundGroupPats optRuleGuard ruleResult ')'
        { PERule (getSrcPos $1) $
-            RuleClause (getSrcPos $1) (QGroup [getName $1]) (reverse $3) $4 }
+            RuleClause (getSrcPos $1) (QGroup [getName $1])
+                       (reverse $3) $4 $5 }
 
 boundGroupPats :: { [BoundGroupPat QSym] }
   : {- empty -}                       { [] }
@@ -321,18 +337,22 @@ fields :: { [TagField QSym] }
   : {- empty -}      { [] }
   | fields field     { $2 : $1 }
 
-
+-- CJC: It's pretty ugly that we spell out all the arithmetic operators here
+-- and again in the guards.  It would be nice to put them in their own parser.
+-- However, when I tried doing this, Happy couldn't use the precedence rules
+-- anymore, resulting in shift/reduce conflicts.  Not sure if there's a better
+-- way.
 field :: { TagField QSym }
-  : 'new'           { TFNew (getSrcPos $1) }
-  | QNAME           { TFVar (getSrcPos $1) (QVar [getName $1]) }
-  | '_'             { TFAny (getSrcPos $1) }
-  | INTLIT          { TFInt (getSrcPos $1) (getIntLit $1) }
-  | '(' field ')'   { $2 }
-  | field '+' field { TFBinOp (getSrcPos $2) TFBOPlus $1 $3 }
-  | field '-' field { TFBinOp (getSrcPos $2) TFBOMinus $1 $3 }
-  | field '*' field { TFBinOp (getSrcPos $2) TFBOTimes $1 $3 }
-  | field '/' field { TFBinOp (getSrcPos $2) TFBODiv $1 $3 }
-  | field '%' field { TFBinOp (getSrcPos $2) TFBOMod $1 $3 }
+  : 'new'                { TFNew (getSrcPos $1) }
+  | QNAME                { TFVar (getSrcPos $1) (QVar [getName $1]) }
+  | '_'                  { TFAny (getSrcPos $1) }
+  | INTLIT               { TFInt (getSrcPos $1) (getIntLit $1) }
+  | '(' field ')'        { $2 }
+  | field '+' field      { TFBinOp (getSrcPos $2) TFBOPlus  $1 $3 }
+  | field '-' field      { TFBinOp (getSrcPos $2) TFBOMinus $1 $3 }
+  | field '*' field      { TFBinOp (getSrcPos $2) TFBOTimes $1 $3 }
+  | field '/' field      { TFBinOp (getSrcPos $2) TFBODiv   $1 $3 }
+  | field '%' field      { TFBinOp (getSrcPos $2) TFBOMod   $1 $3 }
 
 tagExs :: { [TagEx QSym] }
   : {- empty -}        { [] }
@@ -346,6 +366,38 @@ tagMod :: { SrcPos -> Tag QSym -> TagEx QSym }
   : {- empty -}      { TagEx }
   | '+'              { TagPlusEx }
   | '-'              { TagMinusEx }
+
+optRuleGuard :: { Maybe (RuleGuard QSym) }
+  : {- empty -}      { Nothing }
+  | '|' ruleGuard    { Just $2 }
+
+ruleGuard :: { RuleGuard QSym }
+  : 'True'                      { RGTrue   (getSrcPos $1) }
+  | 'False'                     { RGFalse  (getSrcPos $1) }
+  | '(' ruleGuard ')'           { $2 }
+  | '!' ruleGuard               { RGNot    (getSrcPos $1) $2 }
+  | ruleGuard '&&' ruleGuard    { RGBoolOp (getSrcPos $2) RGAnd $1 $3 }
+  | ruleGuard '||' ruleGuard    { RGBoolOp (getSrcPos $2) RGOr $1 $3 }
+  | rgVal rgCompOp rgVal        { RGCompOp (snd $2) (fst $2) $1 $3 }
+
+rgCompOp :: { (RuleGuardCompOp, SrcPos) }
+  : '\<='          { (RGLE, getSrcPos $1) }
+  | '\<'           { (RGLT, getSrcPos $1) }
+  | '>='           { (RGGE, getSrcPos $1) }
+  | '>'            { (RGGT, getSrcPos $1) }
+  | '=='           { (RGEQ, getSrcPos $1) }
+  | '!='           { (RGNEQ, getSrcPos $1) }
+
+rgVal :: { RuleGuardVal QSym }
+  : QNAME            { RGVVar (getSrcPos $1) (QVar [getName $1]) }
+  | INTLIT           { RGVInt (getSrcPos $1) (getIntLit $1) }
+  | '(' rgVal ')'    { $2 }
+  | rgVal '+' rgVal  { RGVBinOp (getSrcPos $2) TFBOPlus  $1 $3 }
+  | rgVal '-' rgVal  { RGVBinOp (getSrcPos $2) TFBOMinus $1 $3 }
+  | rgVal '*' rgVal  { RGVBinOp (getSrcPos $2) TFBOTimes $1 $3 }
+  | rgVal '/' rgVal  { RGVBinOp (getSrcPos $2) TFBODiv   $1 $3 }
+  | rgVal '%' rgVal  { RGVBinOp (getSrcPos $2) TFBOMod   $1 $3 }
+
 
 ruleResult :: { RuleResult QSym }
   : '->' 'fail' STRINGLIT    { RRFail (getSrcPos $2) $3 }

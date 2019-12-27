@@ -62,12 +62,24 @@ $white+                                ;
 <0> \\\/   { token TUnion }
 <0> \/\\   { token TIntersection }
 
+-- For guards
+<0> \<=     { token TLE }
+<0> \<      { token TLT }
+<0> >=     { token TGT }
+<0> >      { token TGE }
+<0> !=     { token TNE }
+<0> !      { token TNot }
+<0> \|\|     { token TOr }
+<0> &&     { token TAnd }
+<0> True   { token TTrue }
+<0> False  { token TFalse }
+
 <0> module   { token TModule }
 <0> import   { token TImport }
 <0> type     { token TType }
 <0> data     { token TData }
 <0> Int      { token TInt }
-<0> TagSet  { token TTagSet }
+<0> TagSet   { token TTagSet }
 <0> metadata { token TMetadata }
 <0> group    { token TGroup }
 <0> grp      { token TGrp }
@@ -334,6 +346,18 @@ data Token =
   | TStar
   | TUnion
   | TIntersection
+
+-- guards
+  | TLE
+  | TLT
+  | TGT
+  | TGE
+  | TNE
+  | TNot
+  | TOr
+  | TAnd
+  | TTrue
+  | TFalse
 
 -- keywords
   | TModule
