@@ -138,6 +138,10 @@ tagSetToString = [cedecl|
       strncpy(buf,"-0-",4);
       return 4;
     }
+    if(ts == 0xFFFFFFFF) {
+      strncpy(buf,"<Invalid tag 0xFFFFFFFF>",26);
+      return 25;
+    }
 
     cursor[0] = '{';
 
