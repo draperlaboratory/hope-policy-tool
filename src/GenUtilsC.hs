@@ -135,11 +135,11 @@ tagSetToString = [cedecl|
       return 3;
     }
     if(ts == 0) {
-      strncpy(buf,"-0-",4);
-      return 4;
+      strncpy(buf,"-0-",buf_len);
+      return 3;
     }
     if(ts == 0xFFFFFFFF) {
-      strncpy(buf,"<Invalid tag 0xFFFFFFFF>",26);
+      strncpy(buf,"<Invalid tag 0xFFFFFFFF>",buf_len);
       return 25;
     }
 
