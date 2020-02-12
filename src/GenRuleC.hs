@@ -64,8 +64,7 @@ writeRuleCFile cFile debug profile _logging topMod policy
                modSyms usedSyms tinfo =
   writeFile cFile $ unlines $
   cHeader debug profile ++ ["\n"] ++
-  [renderC $ ruleLogStructure modSyms topMod policy
-          ++ policyTypeHelpers modSyms usedSyms
+  [renderC $ policyTypeHelpers modSyms usedSyms
           ++ translateTopPolicy debug profile modSyms usedSyms
                                 tinfo topMod policy]
 
@@ -73,39 +72,6 @@ policySuccessName, policyIFailName, policyEFailName :: String
 policySuccessName = "POLICY_SUCCESS"
 policyIFailName   = "POLICY_IMP_FAILURE"
 policyEFailName   = "POLICY_EXP_FAILURE"
-
-ruleLogStructure :: ModSymbols -> ModName -> Maybe (PolicyDecl QSym) -> [Definition]
-ruleLogStructure _ _ Nothing = []
-ruleLogStructure ms topMod (Just p) =
-  [cunit|
-    const int ruleLogMax = $int:(polCount);
-    char* ruleLog[$int:(polCount + 1)];
-    int ruleLogIdx = 0;
-
-        void logRuleEval(const char* ruleDescription) {
-          if(ruleLogIdx < ruleLogMax){
-            ruleLog[ruleLogIdx] = ruleDescription;
-            if(ruleLogIdx <= ruleLogMax){
-              ruleLogIdx++;
-            }
-          }
-        }
-        void logRuleInit() {
-          ruleLogIdx = 0;
-          ruleLog[ruleLogMax] = "additional rules omitted...";
-        }
-        const char* nextLogRule(int* idx) {
-          if(*idx < ruleLogIdx)
-            return ruleLog[(*idx)++];
-          return 0;
-        }
-  |]
-    where
-      -- TODO: it's a little inefficient to call this both here and later
-      -- during policy translation
-      polCount :: Int
-      polCount = let (ds1,ds2) = topPolicyPieces ms topMod p in
-                   length ds1 + length ds2
 
 -- Most policy evaluation functions need access to the operands tag sets.  For
 -- convenience, we fix one set of names used as arguments to functions.
@@ -674,7 +640,7 @@ translatePolicy dbg ms ogMap pd tagInfo modN
          int $id:matchVar = $exp:patExp;
          if ($id:matchVar) {
            $stms:debugPrints
-           $stms:ruleEvalLog
+           $stms:ruleStrUpdate
            $items:ruleResult
          }
        }
@@ -714,10 +680,10 @@ translatePolicy dbg ms ogMap pd tagInfo modN
         |]
       else []
 
-    ruleEvalLog :: [Stm]
-    ruleEvalLog =
+    ruleStrUpdate :: [Stm]
+    ruleStrUpdate =
         [cstms|
-          logRuleEval($string:(qualifiedShowRule pd));
+          $id:contextArgName->rule_str = $string:(qualifiedShowRule pd);
         |]
 
     qualifiedShowRule :: PolicyDecl QSym -> String
