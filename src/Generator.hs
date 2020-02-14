@@ -29,11 +29,12 @@ import System.FilePath  ((</>),addTrailingPathSeparator)
 import System.IO        (hPutStrLn,stderr)
 import System.Directory (createDirectoryIfMissing)
 
+import Data.List (intercalate)
+
 import AST
 import GenUtils    (fmt)
 import CommonFn    (dotName,unqualSymStr,qualSymStr,dash)
 import CommonTypes (Options(..))
-import SrcPrinter  (printPolicy)
 import Symbols     (ModSymbols,SymbolTable(..),UsedSymbols)
 import Tags        (TagInfo(..),buildTagInfo)
 import Validate    (nubSymbols)
@@ -75,17 +76,21 @@ genSymbolsFile modules =
     header nm strs =
       map (fmt 1) $ [dash ++ " " ++ nm ++ " " ++ dash] ++ strs
 
-genASTFile :: Maybe (PolicyDecl QSym) -> IO ()
-genASTFile Nothing =
+genASTFile :: ModSymbols -> IO ()
+genASTFile ms =
   let file = "ast.txt" in do
-    writeFile file $ unlines []
-genASTFile (Just policy) =
-  let file = "ast.txt" in do
-    hPutStrLn stderr $ "Debug: AST for " ++ (qualSymStr $ qsym policy)
-                    ++ " can be found in: " ++ file
-    writeFile file $ unlines $ ast
-      where
-        ast = printPolicy policy
+    hPutStrLn stderr $ "Debug: AST for parsed policies can be found in: "
+                    ++ file
+    writeFile file $ intercalate "\n\n" $ map dumpMod ms
+    where
+      dumpMod :: (ModName,SymbolTable QSym) -> String
+      dumpMod (mn,st) = (replicate 78 '=')
+                     ++ "\nMODULE: " ++ dotName mn ++ "\n\n"
+                     ++ (intercalate "\n" $ map dumpPD $ policySyms st)
+      
+      dumpPD :: (QSym, PolicyDecl QSym) -> String
+      dumpPD (qs,pd) =
+        qualSymStr qs ++ ":\n" ++ show pd
 
 genFiles :: Options
          -> ModSymbols
