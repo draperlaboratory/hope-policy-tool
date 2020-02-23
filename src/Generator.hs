@@ -37,7 +37,7 @@ import CommonFn    (dotName,unqualSymStr,qualSymStr,dash)
 import CommonTypes (Options(..))
 import Symbols     (ModSymbols,SymbolTable(..),UsedSymbols)
 import Tags        (TagInfo(..),buildTagInfo)
-import Validate    (nubSymbols)
+import Validate    (nubSymbols,TopLevelPolicies(..))
 
 -- C code Templates for the generator:
 import GenRuleC    (writeRuleCFile)
@@ -96,10 +96,9 @@ genFiles :: Options
          -> ModSymbols
          -> UsedSymbols
          -> [(ModName, QSym)]
-         -> ModName
-         -> Maybe (PolicyDecl QSym)
+         -> Maybe TopLevelPolicies
          -> IO ()
-genFiles opts allModSymTables polSyms requireSyms topMod policy = let
+genFiles opts allModSymTables polSyms requireSyms policy = let
     allUsedSyms = nubSymbols (polSyms ++ requireSyms)
 
     tagSetHFile = path </> "include" </> (optFileName opts) ++ "_meta_set.h"
@@ -142,7 +141,7 @@ genFiles opts allModSymTables polSyms requireSyms topMod policy = let
 
       -- policy_rule files
     hPutStrLn stderr $ "Generating: " ++ ruleCFile
-    writeRuleCFile ruleCFile debug profile logging topMod policy
+    writeRuleCFile ruleCFile debug profile logging policy
                    allModSymTables allUsedSyms tagInfo
 
     hPutStrLn stderr $ "Generating: " ++ ruleHFile

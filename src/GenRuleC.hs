@@ -48,25 +48,25 @@ import CommonFn
 import GenUtils   (renderC)
 import Tags       (TagInfo(..))
 import SrcPrinter (printRuleClause, printTagFieldBinOp)
+import Validate   (TopLevelPolicies(..))
 
 writeRuleCFile
   :: FilePath
      -> Bool
      -> Bool
      -> Bool
-     -> ModName
-     -> Maybe (PolicyDecl QSym)
+     -> Maybe TopLevelPolicies
      -> ModSymbols
      -> UsedSymbols
      -> TagInfo
      -> IO ()
-writeRuleCFile cFile debug profile _logging topMod policy
+writeRuleCFile cFile debug profile _logging policy
                modSyms usedSyms tinfo =
   writeFile cFile $ unlines $
   cHeader debug profile ++ ["\n"] ++
   [renderC $ policyTypeHelpers modSyms usedSyms
           ++ translateTopPolicy debug profile modSyms usedSyms
-                                tinfo topMod policy]
+                                tinfo policy]
 
 policySuccessName, policyIFailName, policyEFailName :: String
 policySuccessName = "POLICY_SUCCESS"
@@ -245,65 +245,6 @@ expOperands ogMap og =
     standardOperands :: [(QSym, String)]
     standardOperands = [(QVar ["env"],resultsPC)]
 
--- This function checks that the top-level declaration has the form
---    gp_1 & ... & gp_n & lp_1 & ... & lp_k
--- Where each gp_i is a "global" policy (like the loader policy) and each lp_i
--- is a normal policy like (like rwx or cfi).
---
--- It takes a PolicyEx and returns two lists - the global policies
--- and the local policies, in that order.
---
--- This should really return a maybe, instead of erroring
-topPolicyPieces :: ModSymbols -> ModName -> PolicyDecl QSym
-                -> ([(ModName, PolicyDecl QSym)],[(ModName,PolicyDecl QSym)])
-topPolicyPieces ms topMod topDecl =
-  case topLevelDeclsD topMod topDecl of
-    Nothing -> error tppError
-    Just decls -> case splitDecls [] decls of
-      Nothing -> error tppError
-      Just split -> split
-  where
-    -- Computes the names of the policies composed with &s, in order
-    topLevelDeclsD :: ModName -> PolicyDecl QSym
-                   -> Maybe [(ModName,PolicyDecl QSym)]
-    topLevelDeclsD mn (PolicyDecl _ _ _ pe@(PECompModule _ _ _)) =
-      topLevelDeclsE mn pe
-    topLevelDeclsD mn (PolicyDecl _ _ _ pe@(PEVar _ _)) =
-      topLevelDeclsE mn pe
-    topLevelDeclsD mn p = Just [(mn,p)]
-
-    topLevelDeclsE :: ModName -> PolicyEx QSym
-                   -> Maybe [(ModName,PolicyDecl QSym)]
-    topLevelDeclsE _ (PEVar _ x) =
-      let (mn',p') = getPolicy ms topMod x in topLevelDeclsD mn' p'
-    topLevelDeclsE mn (PECompModule _ p1 p2) = do
-      ds1 <- topLevelDeclsE mn p1
-      ds2 <- topLevelDeclsE mn p2
-      return $ ds1 ++ ds2
-    topLevelDeclsE _ _ = Nothing
-
-    -- This confirms the list is globals at the front and locals at the back,
-    -- and splits them.
-    splitDecls :: [(ModName,PolicyDecl b)]
-               -> [(ModName,PolicyDecl b)]
-               -> Maybe ([(ModName,PolicyDecl b)],[(ModName,PolicyDecl b)])
-    splitDecls _ [] = Nothing
-    splitDecls gacc ((p@(_,PolicyDecl _ PLGlobal _ _)):ps) =
-      splitDecls (p:gacc) ps
-    splitDecls gacc ps =
-      if all (\(_,PolicyDecl _ pll _ _) -> pll == PLLocal) ps then
-        Just (reverse gacc,ps)
-      else
-        Nothing
-
-    tppError :: String
-    tppError = "Error: top-level policy must have the form:\n\n"
-            ++ "   gp_1 & ... & gp_n & lp_1 & ... & lp_k\n\n"
-            ++ "Where each gp_i is a \"global\" policy name (like loader) and "
-            ++ "each lp_i is a \"normal\" policy name (like rwx or cfi).\n"
-            ++ "There must be at least one \"normal\" policy.\n"
-
-
 -- The policy mask is used to "hide" the irrelevant parts of a tag set, which
 -- is sometimes useful for efficient tag set operations.
 --
@@ -443,13 +384,14 @@ fixedTagSetFields ti@(TagInfo {tiTagBitPositions,tiTagArgInfo,tiArrayLength}) ta
 -- The eval_policy functions do not check if the computed tag sets already
 -- exist or do any canonization - that is the responsibility of the caller.
 translateTopPolicy :: Bool -> Bool -> ModSymbols -> UsedSymbols -> TagInfo
-                   -> ModName -> Maybe (PolicyDecl QSym) -> [Definition]
-translateTopPolicy _debug _profile _ms _us _ _ Nothing =
+                   -> Maybe TopLevelPolicies -> [Definition]
+translateTopPolicy _debug _profile _ms _us _ Nothing =
    [ [cedecl|
         int eval_policy ($params:policyInputParams) {
           return $id:policySuccessName;
         }|] ]
-translateTopPolicy debug profile ms us tinfo topMod (Just pd) =
+translateTopPolicy debug profile ms us tinfo
+                   (Just (TopLevelPolicies {tlpGlobals,tlpLocals})) =
   ogMasks tinfo ++ policyMasks ++ evalHelpers ++
     [ [cedecl|
         int eval_policy ($params:policyInputParams) {
@@ -464,11 +406,8 @@ translateTopPolicy debug profile ms us tinfo topMod (Just pd) =
           return $id:policySuccessName;
         }|] ]
   where
-    globalPolicies, localPolicies :: [(ModName, PolicyDecl QSym)]
-    (globalPolicies,localPolicies) = topPolicyPieces ms topMod pd
-
     policyMasks :: [Definition]
-    policyMasks = map (policyMask ms us tinfo) (globalPolicies ++ localPolicies)
+    policyMasks = map (policyMask ms us tinfo) (tlpGlobals ++ tlpLocals)
 
     resultVar :: String
     resultVar = "evalResult"
@@ -481,7 +420,7 @@ translateTopPolicy debug profile ms us tinfo topMod (Just pd) =
 
     evalHelpers :: [Definition]
     evalHelpers = map (policyEval debug profile ms ogMap tinfo)
-                      (globalPolicies ++ localPolicies)
+                      (tlpGlobals ++ tlpLocals)
 
     -- The results from global and local policy evaluation are handled
     -- differently, implementing the different semantics of ^ and &.
@@ -500,7 +439,7 @@ translateTopPolicy debug profile ms us tinfo topMod (Just pd) =
     -- causes failure of the top-level policy: each policy composed with & must
     -- have a rule for every instruction.
     globalChecks :: [Stm]
-    globalChecks = concatMap globalCheck globalPolicies
+    globalChecks = concatMap globalCheck tlpGlobals
       where
         globalCheck :: (ModName, PolicyDecl QSym) -> [Stm]
         globalCheck (_, pol) = [cstms|
@@ -516,7 +455,7 @@ translateTopPolicy debug profile ms us tinfo topMod (Just pd) =
 
 
     localChecks :: [Stm]
-    localChecks = concatMap localCheck localPolicies
+    localChecks = concatMap localCheck tlpLocals
       where
         localCheck :: (ModName, PolicyDecl QSym) -> [Stm]
         localCheck (_, pol) = [cstms|
