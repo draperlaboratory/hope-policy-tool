@@ -44,9 +44,11 @@ getAllModules opts mods = do
       errs -> return $ Left errs
 
 getModules :: Options -> [String] -> IO [Either ErrMsg (ModuleDecl QSym)]
-getModules _ [] = return []
-getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
+getModules opts mods = foldlM getModule [] parsedModNames
   where
+    parsedModNames :: [ModName]
+    parsedModNames = map (init . parseDotName) mods
+
     -- recursively search for all imported modules, ignoring cycles
     getModule :: [Either ErrMsg (ModuleDecl QSym)] ->
                  ModName ->
@@ -64,8 +66,6 @@ getModules opts (mn:[]) = getModule [] $ init $ parseDotName mn
           let imports = getImports mdcl
           foldlM getModule (m:ms) imports
         Left e -> error ("Error parsing module: " ++ e)
-
-getModules _ _ = return [Left "Unable to locate top level module" ]
 
 getImports :: ModuleDecl QSym -> [ModName]
 getImports (ModuleDecl _ _ sects) = map importName $ concatMap importS sects

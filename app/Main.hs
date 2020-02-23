@@ -47,7 +47,7 @@ import AST
 import PolicyModules (getAllModules)
 import Generator     (genSymbolsFile, genASTFile, genFiles)
 import Symbols       (buildSymbolTables)
-import Validate      (locateMain, validateMain, validateModuleRequires)
+import Validate      (locateTopLevelPolicies, validateMain, validateModuleRequires)
 import CommonTypes   (Options(..), defaultOptions)
 import ErrorMsg      (ErrMsg)
 
@@ -119,11 +119,11 @@ verStr n = show n
 main :: IO ()
 main = do
     args <- getArgs
-    (opts, topPolicyName) <- handle args
+    (opts, topPolicyNames) <- handle args
 
     case checkErrs opts of
       [] -> do
-        processMods opts topPolicyName
+        processMods opts topPolicyNames
       msgs -> do
         hPutStrLn stderr $ unlines msgs
 
@@ -143,8 +143,8 @@ checkErrs opts = map snd $ filter (\(test,_) -> test opts) optFldErrs
 processMods :: Options -> [String] -> IO()
 processMods _ [] = do
   hPutStrLn stderr "\nError no policy specified"
-processMods opts topPolicyName = do
-    parsedMods <- getAllModules opts topPolicyName
+processMods opts topPolicyNames = do
+    parsedMods <- getAllModules opts topPolicyNames
     case parsedMods of
       Left errs -> do
         hPutStrLn stderr "\nError during module loading."
@@ -159,17 +159,17 @@ processMods opts topPolicyName = do
           Right symbols -> do
             hPutStrLn stdout "\nBuilt Symbol Tables."
             when (optIR opts) $ genSymbolsFile symbols
-            case locateMain topPolicyName symbols of
-              Right (mainModule, mainPolicyDecl) -> do
+            case locateTopLevelPolicies topPolicyNames symbols of
+              Right topLevelPolicies -> do
                 hPutStrLn stdout "Located top-level policy."
-                case validateMain symbols mainModule mainPolicyDecl of
+                case validateMain symbols topLevelPolicies of
                   Right uniqueSyms -> do
                     hPutStrLn stdout "Validated top-level policy.\n"
                     when (optIR opts) $ genASTFile symbols
                     case validateModuleRequires symbols (uniqueMods uniqueSyms) of
                       Right uniqueReqs -> do
                         hPutStrLn stdout "Validated requires.\n"
-                        genFiles opts symbols uniqueSyms uniqueReqs mainModule $ Just mainPolicyDecl
+                        genFiles opts symbols uniqueSyms uniqueReqs (Just topLevelPolicies)
                         hPutStrLn stderr "\nPolicy implementation generated successfully.\n"
                         exitSuccess
                       Left errs -> do
