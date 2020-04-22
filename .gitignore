@@ -2,3 +2,4 @@
 dist/
 policy-tool.cabal
 *~
+*.lock
