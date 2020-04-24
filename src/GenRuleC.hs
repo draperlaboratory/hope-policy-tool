@@ -990,7 +990,7 @@ translateTagSetEx ms mn (v1:v2:vars) resVar varMap tagInfo (TSEUnion _ tse1 tse2
      typename meta_set_t $id:v1;
      $items:tseStmts2;
      int $id:v2 = ms_union(&$id:resVar, &$id:v1);
-     if($id:v2) {logRuleEval($string:("Invalid union in translateTagSetEx!\n")); while(1); }
+     if($id:v2) {printm($string:("Invalid union in translateTagSetEx!\n")); while(1); }
     |],
    vars'')
   where
