@@ -1,0 +1,260 @@
+
+metavar f, x, y, z, ci {{tex \mathsf{ci} }} ::=
+  {{ com term variable }}
+
+metavar C ::=
+  {{ com constructor name }}
+
+indexvar i, j, k, m::= {{ com natural number }}
+
+grammar
+  tdecl :: tdecl_ ::= {{ com tag declarations }}
+   | C x1 , .. , xk :: :: tdecl
+
+  tag, t :: v_ ::= {{ com tags }}
+   | C tf1 , .. , tfk :: :: tag
+
+  tf :: tf_ ::= {{ com tag field }}
+   | _ :: :: any
+   | x :: :: var
+   | t :: :: tag
+   | new :: :: new
+
+  pexp, p :: pe_ ::= {{ com policy expression }}
+   | x             :: :: pvar
+   | rule          :: :: rc
+   | pexp1 | pexp2 :: :: exclusive  {{ tex [[pexp1]] \;[[|]]\; [[pexp2]] }}
+                         {{ com exclusive }}
+   | pexp1 ^ pexp2 :: :: priority  {{ tex [[pexp1]] [[^]] [[pexp2]] }}
+                         {{ com priority }}
+   | pexp1 & pexp2 :: :: disjoint  {{ tex [[pexp1]] \;[[&]]\; [[pexp2]] }}
+                         {{ com disjoint modules }}
+
+  pdecl :: pd_ ::= {{ com policy declaration }}
+   | x = pexp :: :: pd
+
+  rule :: r_ ::= {{ com rule  }}
+   | C ( tspats -> result ) :: :: rule
+
+  tspats :: tsps_ ::= {{ com tag set pattern list }}
+   | x1 = tspat1 , .. , xj = tspatj :: :: tspats
+   | . :: M :: emptypats {{ tex \cdot }}
+   | x = tspat , tspats  :: M :: cons
+   | ( tspats ) :: M :: parens
+
+  result :: res_ ::= {{ com rule results }}
+  | fail :: :: fail {{ tex \mathsf{fail} }}
+  | tsexps :: :: tsexps
+
+  tsexps :: tsexps ::= {{ com tag set expression list }}
+  | x1 = tsexp1 , .. , xj = tsexpj :: :: tsexps
+  | x = tsexp , tsexps  :: M :: cons
+  | . :: M :: nil {{ tex \cdot }}
+  | ( tsexps ) :: M :: parens
+
+  tspat :: tsp_ ::= {{ com tag set pattern }}
+   | _ :: :: underscore
+   | x :: :: variable
+   | x @ tspat :: :: named_tag
+   | { t1 , .. , tk } :: :: exact {{ com exact }}
+   | [ tr1 , .. , trk ] :: :: includes {{ com includes }}
+
+  tsexp :: tse_ ::= {{ com tag set expression }}
+   | x :: :: variable
+   | { t1 , .. , tk } :: :: exact {{ com exact }}
+   | tsexp [ tr1 , .. , trk ] :: :: modifies_variable {{ com modify exp }}
+   | tsexp1 \/ tsexp2 :: :: union {{ com union }}
+   | tsexp1 /\ tsexp2 :: :: inter {{ com intersection }}
+
+  tr :: tr_ ::= {{ com tag requirement }}
+   | t   :: :: yes_tag_explicit
+   | + t :: :: yes_tag
+   | - t :: :: no_tag
+
+  trs :: trs_ ::= {{ com tag requirement lists }}
+   | tr1 , .. , trk :: :: tel
+   | . :: M :: nil {{ tex \cdot }}
+   | tr , trs :: M :: cons
+
+  varset , VS :: VS_ ::= {{ com sets of variables }}
+    | dom ( Del ) :: :: domDel
+    | VS1 \/ VS2 :: :: union 
+
+
+  T {{ tex \mathcal{T} }} :: TS_ ::= {{ com tag sets }}
+   | { t1 , .. , tk } :: :: tagset
+   | Del ( x ) :: M :: lookup
+   | T1 \/ T2 :: M :: union
+   | T1 /\ T2 :: M :: inter
+   | update ( T , trs ) :: M :: update
+     {{tex [[update]]_{[[T]]} ([[trs]]) }}
+
+
+  Del {{ tex \Delta }} :: TE_ ::= {{ com tag environments }}
+   | . :: :: nil {{ tex \cdot }}
+   | Del [ x |-> T ] :: :: update
+   | Del1 |_| Del2 :: M :: union
+
+   R {{ tex \mathcal{R} }} :: RR_ ::= {{ com policy results }}
+   | Del :: :: env
+   | _|_ :: :: none {{ tex \bot }} {{ com implicit failure }}
+   | fail :: :: fail {{ com explicit failure }} {{ tex \mathsf{fail} }}
+   | R1 |_| R2 :: M :: union
+   | match ( T , Del , tspat ) :: M :: pattern_match
+       {{ tex [[match]]_{[[T]]}([[Del]],[[tspat]]) }}
+   | matches ( Del , tspats ) :: M :: pattern_matches
+       {{ tex [[matches]]_{[[Del]]}([[tspats]]) }}
+
+
+  terminals :: 'terminals_' ::=
+    | | :: :: exclusive {{ tex | }}
+    | ^ :: :: priority {{ tex \uparrow }}
+    | & :: :: module {{ tex \& }}
+    | -> :: :: larrow {{ tex \to }}
+    | _ :: :: underscore {{ tex \_ }}
+    | if :: :: if {{ tex \textsf{if} }}
+    | then :: :: then {{ tex \textsf{then} }}
+    | else :: :: else {{ tex \textsf{else} }}
+    | new :: :: new {{ tex \textsf{new} }}
+    | |- :: :: turnstile {{ tex \vdash }}
+    | => :: :: Rarrow {{ tex \Rightarrow }}
+    | edomP :: :: edomp {{ tex \mathsf{edomP} }}
+    | edomR :: :: edomr {{ tex \mathsf{edomR} }}
+    | edomG :: :: edomg {{ tex \mathsf{edomG} }}
+    | |_| :: :: squnion {{ tex \sqcup }}
+    | \/ :: :: union2 {{ tex \cup }}
+    | /\ :: :: inter {{ tex \cap }}
+    | dom :: :: domain {{ tex \mathsf{dom} }}
+    | |-> :: :: BRightArrow {{ tex \mapsto }}
+    | in :: :: in {{ tex \in }}
+    | notin :: :: notin {{ tex \notin }}
+    | match :: :: match {{ tex \mathsf{match} }}
+    | matches :: :: matches {{ tex \mathsf{matches} }}
+    | contains :: :: contains {{tex \mathsf{contains} }}
+    | update :: :: update {{tex \mathsf{update} }}
+
+  bool {{ tex b }} :: 'bool_' ::=
+    | true :: :: true {{ tex \mathsf{true} }}
+    | false :: :: false {{ tex \mathsf{false} }}
+    | contains ( T , trs ) :: M :: contains
+        {{ tex [[contains]]_{[[T]]}([[trs]]) }}
+
+  formula :: 'formula_' ::=
+    | judgement :: :: judgement
+    | edomP ( Del , p ) = bool :: :: edomp
+    | edomP ( Del , p ) :: :: edomp_exp
+    | edomG ( Del , g ) = bool :: :: edomg
+    | formula1 .. formulaj :: :: dots
+    | x in varset :: :: invars
+    | x notin varset :: :: notinvars
+    | Del ( x ) = T :: :: tagenv_lookup
+    | match ( T , Del , tspat ) = R :: :: match_result
+       {{tex [[match]]_{[[T]]} ([[Del]],[[tspat]]) = [[R]] }}
+    | Del1 |- tsexps => Del2 :: :: exps_eval
+    | update ( T , trs ) = T' :: :: update_reuslt
+       {{tex [[update]]_{[[T]]} ([[trs]]) = [[T']] }}
+
+defns
+JEvalMatches :: '' ::=
+
+  defn
+    matches ( Del , tspats ) = R :: :: msev :: 'M'
+  by
+
+  ------------------ :: Nil
+  matches(Del,.) = .
+
+  y notin dom(Del)
+  --------------------------------- :: DomFail
+  matches(Del,(y=tspat,tspats)) = _|_
+
+  matches(Del,tspats) = _|_
+  --------------------------------- :: TailFail
+  matches(Del,(y=tspat,tspats)) = _|_
+
+
+  y in dom(Del)
+  matches(Del,tspats) = Del'
+  match(Del(y),Del',tspat) = R
+  ------------------------------- :: Cons
+  matches(Del,(y=tspat,tspats)) = R
+
+defns
+JEvalExp :: '' ::=
+
+  defn
+    Del |- tsexp => T :: :: tseev :: 'ETSE'
+  by
+
+  y in dom(Del)
+  ------------------ :: Var
+  Del |- y => Del(y)
+
+  ---------------------------------------- :: Exact
+  Del |- {t1 , .. , tk } => {t1 , .. , tk}
+
+  Del |- tsexp => T
+  -------------------------------------------------- :: Update
+  Del |- tsexp [t1 , .. , tk] => update(T,t1,..,tk)  
+
+  Del |- tsexp1 => T1      Del |- tsexp2 => T2
+  -------------------------------------------- :: Union
+  Del |- tsexp1 \/ tsexp2 => T1 \/ T2
+
+  Del |- tsexp1 => T1      Del |- tsexp2 => T2
+  -------------------------------------------- :: Intersection
+  Del |- tsexp1 /\ tsexp2 => T1 /\ T2
+
+defns
+JEvalExps :: '' ::=
+
+  defn
+    Del1 |- tsexps => Del2 :: :: tsesev :: 'ETSE'
+  by
+
+  ------------- :: Nil
+  Del |- . => .
+
+  Del1 |- tsexp => T
+  Del1 |- tsexps => Del2
+  -------------------------------------- :: Cons
+  Del1 |- x = tsexp,tsexps => Del2 [x |-> T] 
+
+defns
+JEvalPolicy :: '' ::=
+
+  defn
+    Del |- p => R :: :: pev :: 'EP'
+  by
+
+  matches(Del,(ci=[+C],tspats)) = _|_
+  ---------------------------------- :: RuleImpFail
+  Del1 |- C(tspats -> result) => _|_
+
+  matches(Del,(ci=[+C],tspats)) = Del'
+  --------------------------------- :: RuleExpFail
+  Del |- C(tspats -> fail) => fail
+
+  matches(Del1,(ci=[+C],tspats)) = Del2      Del2 |- tsexps => Del3
+  -------------------------------------------------------- :: RuleSuccess
+  Del1 |- C(tspats -> tsexps) => Del3
+
+  Del |- p1 => Del'
+  ---------------------- :: CompMatchLSuccess
+  Del |- p1 ^ p2 => Del'
+
+  Del |- p1 => fail
+  ---------------------- :: CompMatchLFail
+  Del |- p1 ^ p2 => fail
+
+  Del |- p1 => _|_     Del |- p2 => R
+  ------------------------------------ :: CompMatchR
+  Del |- p1 ^ p2 => R
+
+  Del |- p1 ^ p2 => R
+  -------------------- :: CompExcl
+  Del |- p1 | p2 => R
+
+  Del |- p1 => R1       Del |- p2 => R2
+  ------------------------------------- :: CompModule
+  Del |- p1 & p2 => R1 |_| R2
