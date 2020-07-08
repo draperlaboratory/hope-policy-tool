@@ -1,0 +1,431 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath,amssymb}
+\usepackage{supertabular}
+\usepackage{geometry}
+\usepackage{ifthen}
+\usepackage[usenames,dvipsnames,svgnames,table,x11names]{xcolor}
+\usepackage{alltt}%hack
+
+
+\newif\ifdraft
+%\drafttrue
+\draftfalse
+\newcommand{\cjc}[1]{\ifdraft{\color{Blue}[\textbf{CJC}: #1]}\fi}
+
+\include{plang}
+
+\title{Policy Language: Theoretical Design Document}
+\date{October 2018}
+
+\renewcommand{\ottusedrule}[1]{\[#1\]\vspace{1em}}
+
+
+%% \renewcommand{\ottgrammartabular}[1]
+%%   {\begin{minipage}{\columnwidth}\begin{tabular}{ll}#1\end{tabular}\end{minipage} }
+%% \renewcommand{\ottrulehead}[3]
+%%   {$#1$  $#2$ & $#3$}
+%% \renewcommand{\ottprodline}[6]
+%%   { \quad $#1$ \ $#2$ & \quad $#3$  $#5$  $#6$}
+%% \renewcommand{\ottinterrule}
+%%   {\\[2.0mm]}
+%% \renewcommand{\ottkw}{\mathsf}
+%% \renewcommand{\ottdrule}[4][]{{\displaystyle\frac{\begin{array}{l}#2\end{array}}{#3}\;\ottdrulename{#4}}}
+
+\begin{document}
+
+\maketitle
+
+This document gives a formal definition to a portion of the Draper/Dover Policy
+Language (DPL).  Section~\ref{sec:syntax} gives the complete syntax for this portion
+and describes its meaning informally.  Section~\ref{sec:opsem} gives an
+operational semantics and provides some background information on design
+decisions that went into the language.
+
+\section{Syntax}
+\label{sec:syntax}
+
+Metavariables: $C$ ranges over constructor names, $x$ and $y$ range over variable
+names, which include opgroups and pattern variables.
+
+\subsection{Tags}
+
+In DPL, metadata is always a set of {\em tags}.  Tags are
+primitive units declared by each micropolicy.  For example, the RWX policy has
+{\tt Rd}, {\tt Wr} and {\tt Ex} tags.  The metadata associated with a memory
+word or register is a set of these tags.  For example, stack temporary memory
+typically has the metadata {\tt \{Rd,Wr\}}, and executable memory typically has
+the metadata {\tt \{Ex\}}.  We use the words ``metadata'' and ``tag set''
+interchangeably, and take care to avoid using the word ``tag'' where
+``metadata'' is meant.
+
+In informal policy language documentation, we use the word ``values'' to refer
+to what we call ``tags'' in this document.  We haven't made that switch here in
+order to reserve the word ``value'' for use by the operational semantics.  At
+the moment, however, the operational semantics don't need a notion of values, so
+it might be better to unify the language.
+
+\cjc{Most tags have no arguments (they are just a constructor $[[C]]$).  Tags
+  with arguments are not quite right in the current version of this document.
+  In particular, union and intersection are tricky for tags with arguments, but
+  aren't commonly used.}
+
+\bigskip
+
+\ottgrammartabular{
+\otttdecl\ottinterrule
+\otttag\ottinterrule
+\otttf\ottafterlastrule
+}
+
+\subsection{Policies}
+
+The ``policies'' section of a DPL file contains a series of policy declarations,
+assigning a name to a policy expression.  Policy expressions are built out of
+one primitive ``rule'' form and three composition operators.
+
+The $[[pexp1 | pexp2]]$ and $[[pexp1 ^ pexp2]]$ forms have the same operational
+semantics but are intended to have different static semantics to help rule out
+common errors (see Section~\ref{sec:static}) below.  In both cases, the left
+policy is tried first.  If it has a rule that ``matches'' the current
+instruction's metadata, that rule's answer is used.  otherwise, the policy on
+the right is used.
+
+The $[[pexp1 & pexp2]]$ form is used when combining two completely distinct
+policies to be run in parallel.  This form is only allowed if $[[pexp1]]$ and
+$[[pexp2]]$ use different tags.  When evaluating $[[pexp1 & pexp2]]$, each
+policies sees metadata containing only its tags, as if it were running in
+isolation.  An instruction is allowed only if both subpolicies allow it.
+
+\bigskip
+
+\ottgrammartabular{
+\ottpdecl\ottinterrule
+\ottpexp\ottafterlastrule
+}
+
+\bigskip
+
+Rules comprise an opgroup $[[C]]$, a list of patterns, and result.  Opgroups
+specify the subset of RISC-V instructions for which this rule applies and define
+what memory and register metadata will be available in the rest of the rule (for
+more details, see Section~\ref{sec:opgroups}).
+
+A rule only ``matches'' the current instruction if that instruction is in
+opgroup {\em and} all its patterns match.  Otherwise, the rule ``implicitly
+fails'' and (typically) the next rule is tried.  If the rule does match, its
+result either indicates an ``explicit'' policy failure, or provides instructions
+on how to update the metadata (indicating that the instruction is accepted).
+More on implicit and explicit failure in Section~\ref{sec:failure}.
+
+\bigskip
+
+\ottgrammartabular{
+\ottrule\ottinterrule
+\ottresult\ottafterlastrule
+}
+
+\bigskip
+
+Pattern constraints have the form $[[x = tspat]]$.  Here, $[[x]]$ is a name
+defined by the opgroup to refer to a particular memory address or register used
+by this category of instructions.  $[[tspat]]$ expresses a constraint on the
+corresponding tag set.
+
+The simplest forms of patterns are $[[{t1,..,tk}]]$ and $[[ [tr1,..,trk] ]]$.
+The former matches only if the corresponding tag set is exactly the set shown
+(order does not matter).  The latter matches if each of the individual ``tag
+requirements'' is true.  The tag requirement $[[+t]]$ indicates that a certain
+tag must be present, while $[[-t]]$ indicates that a certain tag must be absent.
+A tag $[[t]]$ by itself in this context is shorthand for $[[+t]]$.
+
+The tag set may be bound to a name $[[x]]$ for use in the rule's results, using
+the pattern $[[x]]$ which matches every tag set, or $[[x@tspat]]$ which matches
+the same sets as $[[tspat]]$.  The pattern $\_$ binds no names and matches
+every tag set.
+
+\bigskip
+
+\ottgrammartabular{
+\otttspats\ottinterrule
+\otttspat\ottinterrule
+\otttr\ottafterlastrule
+}
+
+\bigskip
+
+When a rule accepts an instruction, its conclusion indicates how to update the
+relevant metadata with the form $[[x = tsexp]]$.  Here, $[[x]]$ is a name defined
+by the opgroup to refer to a particular memory address or register that is
+updated by this category of instructions.  $[[tsexp]]$ describes the new tag set
+for this location.
+
+The simplest form of expression are $[[{t1, .. , tk}]]$ and
+$[[tsexp[tr1, .., trk] ]]$.  The former provides an exact tag set.  The latter
+provides a list of modifications for another tag set $[[tsexp]]$ (typically a
+variable bound by the rule's patterns).  These modifications have the form
+$[[+t]]$ or $[[-t]]$ indicating that a tag should be added if absent or removed
+if present.
+
+\cjc{The union and intersection forms are a little messy.  If you try to union
+  two sets containing two different colors in the heap policy, you get a dynamic
+  error.}
+
+\bigskip
+
+\ottgrammartabular{
+\otttsexps\ottinterrule
+\otttsexp\ottafterlastrule
+}
+
+
+\section{Operational Semantics}
+\label{sec:opsem}
+
+\subsection{Design Decisions}
+
+\subsubsection{Opgroups} 
+
+\label{sec:opgroups}
+
+In the implementation, opgroups serve two purposes: one
+is to identify the instruction being executed, and the other is to map the
+operand names used in the ISA documentation to the intuitive field names written
+in our rules.  This is desirable for two reason: First, there are some classes
+of instructions where the operands have different names in the ISA spec, but the
+meaning of the instruction is similar enough that we want to write rules that
+cover the whole class.  Second, it abstracts away from the ISA, potentially
+making it possible to write policies that apply for multiple ISAs.
+
+In the language we describe here, we use opgroups only to identify the
+instruction, and ignore the question of hardware/ISA spec names.  Put another
+way, before executing the semantics described here, it's necessary to first
+translate from the ISA spec operand names to the rule names, and translate back
+after.  This simplifies the semantics.
+
+A more complete formalization of the language would include the ``opgroups''
+section from the DPL files and construct the mapping from hardware names to
+intuitive names accordingly.
+
+\subsubsection{Failure}
+\label{sec:failure}
+
+At execution time, a policy can fail for two reasons:
+
+\begin{itemize}
+\item The policy specifies that the given set of tags is a violation, via the
+  $\mathsf{fail}$ keyword.  We call this {\em explicit} failure.
+\item The policy does not contain a rule that matches the given set of tags.
+  We call this {\em implicit} failure.
+\end{itemize}
+
+Explicit and implicit failure have different meanings, especially when dealing
+with incomplete pieces of policies.  A rule that fails explicitly indicates a
+real policy violation, while it may fail implicitly because it is intended to be
+composed with other rules to create a complete policy.
+
+The operational semantics needs to be aware of this distinction.  Consider the
+``pattern matching'' form of policy composition, $[[p1 ^ p2]]$  The intended
+semantics here is that $[[p1]]$ applies if it has a rule for the given input,
+and otherwise $[[p2]]$ applies.  If $[[p1]]$ contains an explicit failure, then
+$[[p1 ^ p2]]$ should also fail.  But an implicit failure of $[[p1]]$ does not
+trigger the failure of $[[p1 ^ p2]]$.
+
+\subsection{Syntax}
+
+We let $[[T]]$ range over sets of tags.  Tag environments $[[Del]]$ are maps
+variables $[[x]]$ to tag sets $[[T]]$.  They are used in the input and output of
+policy evaluation.  Variables in the domain are either provided by the execution
+environment for the opgroup's memory and register metadata, or are created by
+the rule by binding tag sets to variables with the $@$ form.  We write
+$[[dom(Del)]]$ for the domain of a tag environment (that is, the set of variables
+that are mapped to tag sets).
+
+The empty tag environment (i.e., the tag environment with an empty domain) is
+written $[[.]]$.  We write $[[Del [x |-> T] ]]$ for the tag environment that
+maps $[[x]]$ to $[[T]]$ and otherwise has the same mappings as $[[Del]]$.  Finally, we
+write $[[Del(x)]]$ for the tag set mapped to $[[x]]$ by $[[Del]]$ if
+$[[x]] \in [[dom(Del)]]$.  It is undefined otherwise.
+
+We use $R$ to denote the result of a policy evaluation, which is either implicit
+failure $[[_|_]]$, explicit failure $[[fail]]$, or a new tag environment
+$[[Del]]$.
+
+\bigskip
+
+\ottgrammartabular{
+  \ottT\ottinterrule
+  \ottDel\ottinterrule
+  \ottR\ottafterlastrule
+}
+
+\bigskip
+
+Two policies that refer to different sets of tags may be combined with the
+$[[&]]$ operator, as in $[[p1 & p2]]$.  We implement this operator via a union
+over policy results $[[R1 |_| R2]]$, which is defined as follows: If either
+input is $[[fail]]$, it returns $[[fail]]$.  Otherwise, if either input is
+$[[_|_]]$, it returns $[[_|_]]$.  Finally, n the $[[Del1 |_| Del2]]$ case, it is
+defined to map each field name $[[x]] \in [[dom(Del1) \/ dom(Del2)]]$ to
+$[[Del1(x) \/ Del2(x)]]$ if it appears in both domains, and to $[[Del1(x)]]$ or
+$[[Del2(x)]]$ if it appears in only one domain.
+
+\subsection{Pattern matching}
+
+The most basic form of policy is the {\em rule clause}.
+\[
+   [[C(tspats -> result)]]
+\]
+Let's examine the pieces of this rule (see Section~\ref{sec:syntax} for a more
+complete description:
+\begin{itemize}
+\item $C$ is an opgroup name.  Opgroups are tags, so this expresses a constraint
+  that this rule only applies when the tag $C$ appears in the tag set for the
+  current instruction.
+\item $[[tspats]]$ is a list of pattern matching equations of the form
+  $[[x = tspat]]$.  Here, $[[x]]$ is a {\em field name}: a field is an element of
+  the system that can have an associated tag, including memory, registers, and
+  the program counter.  $[[tspat]]$ is a pattern.  This pattern serves two
+  purposes: (a) it can put some constraints on $[[x]]$'s tag set (for example, that
+  it must include or not include a given tag), and (b) it can bind a name for
+  $[[x]]$'s tag set so that it can be mentioned in the conclusion of the rule.
+\item $[[result]]$ is either $[[fail]]$ (explicit failure), or it is a list of
+  tag set definitions of the form $[[x = tsexp]]$.  As in $[[tspats]]$, $[[x]]$
+  identifies a tag set to be updated.  The tag expression $[[tsexp]]$ defines the
+  updated tag set for $x$ after the instruction executes.
+\end{itemize}
+
+Part of evaluating a rule clause against a tag environment $[[Del]]$ is checking
+whether $[[tspats]]$ matches against $[[Del]]$, and computing a binding for
+pattern variables if so.  The computed map from pattern variables to tag sets is
+itself a tag environment $[[Del']]$.  Below, we define three functions that are
+used in the dynamic semantics to compute this result:
+
+\begin{itemize}
+\item $[[contains(T,tr1,...,trk)]]$ checks whether $[[T]]$ satisfies the
+  requirement expressed by each $[[tri]]$, returning a boolean result.
+
+\item $[[match (T , Del, tspat)]]$ checks whether the pattern $[[tspat]]$
+  matches against the tag set $[[T]]$.  If not, it returns $[[_|_]]$.  If so, it
+  returns the result of updating $[[Del]]$ with any corresponding new bindings.
+\item $[[matches (Del, tspats)]]$ checks every pattern in $[[tspats]]$ against
+  the current tag environment $[[Del]]$, and
+  collects the results.
+\end{itemize}
+
+\bigskip
+\framebox{$[[contains(T,tr1,...,trk)]] = [[bool]]$}
+\begin{align*}
+  [[contains(T,.)]] &= [[true]]\\
+  [[contains(T,t,trs)]] &= t \in [[T]] \wedge [[contains(T,trs)]]\\
+  [[contains(T,+t,trs)]] &= t \in [[T]] \wedge [[contains(T,trs)]]\\
+  [[contains(T,-t,trs)]] &= t \notin [[T]] \wedge [[contains(T,trs)]]
+\end{align*}
+
+\bigskip
+\framebox{$[[match(T,Del,tspat)]] = [[R]]$}
+
+\begin{align*}
+  [[match(T,Del,_)]] &= [[Del]]\\
+  [[match(T,Del,y)]] &= [[Del [ y |-> T] ]]\\
+  [[match(T,Del,y@tspat)]] &=
+      \begin{cases}
+        [[Del'[y |-> T] ]] & \text{if $[[match(T,Del,tspat)]]$ = $[[Del']]$}\\
+        [[_|_]] & \text{if $[[match(T,Del,tspat)]]$ = $[[_|_]]$}
+      \end{cases}
+     \\
+  [[match(T,Del,{t1,...,tk})]] &=
+      \begin{cases}
+        [[Del]] & \text{if } [[T]] = [[{t1,...,tk}]]\\
+        [[_|_]] & \text{otherwise}
+      \end{cases}
+     \\
+  [[match(T,Del,[tr1,...,trk])]] &=
+      \begin{cases}
+        [[Del]] & \text{if } [[contains(T,tr1,...,trk)]] = [[true]]\\
+        [[_|_]] & \text{if } [[contains(T,tr1,...,trk)]] = [[false]]
+      \end{cases}
+\end{align*}
+
+\ottdefnmsev
+
+\bigskip
+
+Finally, we also describe how to evaluate a collection of tag set expressions,
+formalized as a judgement $[[Del1 |- tsexps => Del2]]$.  This definition makes
+use of a tag environment $[[Del1]]$ that provides values for any tag set
+variables in the expressions and is typically the result of the $[[match]]$
+function defined above.  It relies on a secondary judgement,
+$[[Del1 |- tsexp => T]]$, which evaluates an individual tag set expression.  There
+is also a helper function, $[[update(T,tr1,...,trk)]]$, which applies the
+modification denoted by each $[[tri]]$ to the tag set $[[T]]$
+
+\bigskip
+
+\framebox{$[[update(T,tr1,...,trk)]] = [[T']]$}
+\begin{align*}
+  [[update(T,.)]] &= [[T]]\\
+  [[update(T,t,trs)]] &= [[update(T,trs)]] \cup \{t\}\\
+  [[update(T,+t,trs)]] &= [[update(T,trs)]] \cup \{t\}\\
+  [[update(T,-t,trs)]] &= [[update(T,trs)]] \setminus \{t\}
+\end{align*}
+
+\ottdefntseev
+
+\ottdefntsesev
+
+
+\subsection{Static semantics}
+\label{sec:static}
+
+Our intent is to add a type system that statically rules out common classes of
+errors.  For example:
+
+\begin{itemize}
+\item The $[[p1 | p2]]$ operator is intended to be used only in situations where
+  $[[p1]]$ and $[[p2]]$ don't ``overlap''.  That is, for any $[[Del]]$, at least
+  one of $[[p1]]$ or $[[p2]]$ should result in implicit failure.
+
+\item The $[[p1 & p2]]$ operator is intended to be used only when $[[p1]]$ and
+  $[[p2]]$ are defined in distinct modules that refer to distinct sets of tags.
+  That is, its use is in composing disjoint policies, not pieces of one policy.
+\end{itemize}
+
+We don't currently have a type system or notion of modules in this semantics,
+though, so these and other statically-detectable errors are not caught at
+compile time and may result in buggy policies.
+
+\subsection{Policy Evaluation}
+
+We write $[[Del |- p => R]]$ to indicate that the policy $[[p]]$ has result
+$[[R]]$ when evaluated in tag environment $[[Del]]$.  If the policy accepts
+this tag environment, the output will be a set of updated tags.  In the case of
+an explicit failure, the output will be $[[fail]]$.  In the case of implicit
+failure, the output will be $[[_|_]]$.  See Section~\ref{sec:failure} for more
+on this distinction.
+  
+This judgement is defined by the ``big-step'' operational semantics that follows.
+One point of interest is the evaluation rules for $[[|]]$ and $[[^]]$.  The
+$[[|]]$ operator is evaluated as if it were $[[^]]$.  This makes sense, because
+if the non-overlapping check for $[[|]]$ has succeeded, then it has the same
+behavior $[[^]]$.  The rules for $[[^]]$ enforce the intent that the right
+policy applies only if the left doesn't.  In general, the operational semantics
+assume that static checks will rule out obvious errors (even though we haven't
+implemented those checks yet).
+
+Note that the rules make explicit the implementation detail that opgroups are
+just tags in the current instruction's metadata.  The definition of the
+$[[matches]]$ judgement allows for multiple patterns matches on the same tag set
+name.  It would be good to find another way to express this, or to make opgroups
+more explicit in general.
+
+\cjc{This definition ignores the possibility of bound names for policies.  This
+  isn't hard, I just need to add another environment/context.}
+
+\bigskip
+
+\ottdefnpev
+
+
+\end{document}
+
