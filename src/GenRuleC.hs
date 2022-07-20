@@ -109,7 +109,7 @@ resultsType = [cty| typename results_t |]
 policyInputParams :: [Param]
 policyInputParams =
   [cparams|$ty:contextType* $id:contextArgName,
-           $ty:operandsType* $id:operandsArgName,
+           const $ty:operandsType* $id:operandsArgName,
            $ty:resultsType* $id:resultsArgName|]
 
 policyInputArgs :: [Exp]
