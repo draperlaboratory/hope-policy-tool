@@ -860,17 +860,20 @@ translateBoundGroupEx ms mn mask ogMap varMap tagInfo (BoundGroupEx loc opr tse)
       -- preserved.  This may be wrong, though, for "global" policies like the
       -- loader.
       [citems|
-        { typename meta_set_t $id:topVar;
+        { typename meta_set_t* res_tmp = malloc(sizeof(typename meta_set_t));
+          memcpy(res_tmp, $id:resPositionName, sizeof(typename meta_set_t));
+          typename meta_set_t $id:topVar;
           $items:evalItems;
           for(int i = 0; i < META_SET_BITFIELDS; i++) {
-              ($id:resPositionName)->tags[i] |= ($id:topVar.tags[i] & $id:mask[i]);
+              res_tmp->tags[i] |= ($id:topVar.tags[i] & $id:mask[i]);
           }
           for(int i = META_SET_BITFIELDS; i < META_SET_WORDS; i++) {
             if($id:mask[i]) {
-              $id:resPositionName->tags[i] =
+              res_tmp->tags[i] =
                 $id:topVar.tags[i];
             }
           }
+          $id:resPositionName = res_tmp;
           $id:resHasResult = true;
         }
       |]
@@ -1041,6 +1044,7 @@ cHeader _debug _profile = [ "#include \"policy_meta.h\""
                          , "#include \"policy_meta_set.h\""
                          , "#include <stdbool.h>"
                          , "#include <stdint.h>"
+                         , "#include <stdlib.h>"
                          , "#include <stdio.h>"
                          , "#include <inttypes.h>"
                          , "#include <limits.h>"
