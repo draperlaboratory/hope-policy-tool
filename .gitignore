@@ -2,3 +2,5 @@
 dist/
 policy-tool.cabal
 *~
+/make_*.log
+/stack.yaml.lock
