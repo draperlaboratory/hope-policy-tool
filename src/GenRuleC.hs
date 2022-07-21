@@ -860,24 +860,24 @@ translateBoundGroupEx ms mn mask ogMap varMap tagInfo (BoundGroupEx loc opr tse)
       -- preserved.  This may be wrong, though, for "global" policies like the
       -- loader.
       [citems|
-        { typename meta_set_t* res_tmp = malloc(sizeof(typename meta_set_t));
+        { typename meta_set_t res_tmp;
           if ($id:resHasResult) {
-            memcpy(res_tmp, $id:resPositionName, sizeof(typename meta_set_t));
+            memcpy(&res_tmp, $id:resPositionName, sizeof(typename meta_set_t));
           } else {
-            memset(res_tmp, 0, sizeof(typename meta_set_t));
+            memset(&res_tmp, 0, sizeof(typename meta_set_t));
           }
           typename meta_set_t $id:topVar;
           $items:evalItems;
           for(int i = 0; i < META_SET_BITFIELDS; i++) {
-              res_tmp->tags[i] |= ($id:topVar.tags[i] & $id:mask[i]);
+              res_tmp.tags[i] |= ($id:topVar.tags[i] & $id:mask[i]);
           }
           for(int i = META_SET_BITFIELDS; i < META_SET_WORDS; i++) {
             if($id:mask[i]) {
-              res_tmp->tags[i] =
+              res_tmp.tags[i] =
                 $id:topVar.tags[i];
             }
           }
-          $id:resPositionName = res_tmp;
+          $id:resPositionName = canonize(&res_tmp);
           $id:resHasResult = true;
         }
       |]
