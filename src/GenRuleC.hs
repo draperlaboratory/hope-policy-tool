@@ -861,7 +861,11 @@ translateBoundGroupEx ms mn mask ogMap varMap tagInfo (BoundGroupEx loc opr tse)
       -- loader.
       [citems|
         { typename meta_set_t* res_tmp = malloc(sizeof(typename meta_set_t));
-          memcpy(res_tmp, $id:resPositionName, sizeof(typename meta_set_t));
+          if ($id:resHasResult) {
+            memcpy(res_tmp, $id:resPositionName, sizeof(typename meta_set_t));
+          } else {
+            memset(res_tmp, 0, sizeof(typename meta_set_t));
+          }
           typename meta_set_t $id:topVar;
           $items:evalItems;
           for(int i = 0; i < META_SET_BITFIELDS; i++) {
@@ -1044,7 +1048,6 @@ cHeader _debug _profile = [ "#include \"policy_meta.h\""
                          , "#include \"policy_meta_set.h\""
                          , "#include <stdbool.h>"
                          , "#include <stdint.h>"
-                         , "#include <stdlib.h>"
                          , "#include <stdio.h>"
                          , "#include <inttypes.h>"
                          , "#include <limits.h>"
