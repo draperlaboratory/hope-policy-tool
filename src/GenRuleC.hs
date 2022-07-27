@@ -95,13 +95,13 @@ resultsPC = resSetsArgName ++ "pc"
 resultsRD = resSetsArgName ++ "rd"
 resultsCSR = resSetsArgName ++ "csr"
 
-pcTagName,ciTagName,op1TagName,op2TagName,op3TagName,memTagName :: String
-pcTagName = "pc_tag"
-ciTagName = "ci_tag"
-op1TagName = "op1_tag"
-op2TagName = "op2_tag"
-op3TagName = "op3_tag"
-memTagName = "mem_tag"
+pcMetaSetName,ciMetaSetName,op1MetaSetName,op2MetaSetName,op3MetaSetName,memMetaSetName :: String
+pcMetaSetName = "get_ms(" ++ pcArgName ++ ")"
+ciMetaSetName = "get_ms(" ++ ciArgName ++ ")"
+op1MetaSetName = "get_ms(" ++ op1ArgName ++ ")"
+op2MetaSetName = "get_ms(" ++ op2ArgName ++ ")"
+op3MetaSetName = "get_ms(" ++ op3ArgName ++ ")"
+memMetaSetName = "get_ms(" ++ memArgName ++ ")"
 
 -- For convenience, we define a few commonly used types and parameter/argument
 -- lists.
@@ -221,18 +221,18 @@ patOperands ogMap og =
                        $ ognPats ogNames)
   where
     tagSpecPatName :: TagSpec -> String
-    tagSpecPatName RS1 = op1TagName
-    tagSpecPatName RS2 = op2TagName
-    tagSpecPatName RS3 = op3TagName
-    tagSpecPatName Mem = memTagName
-    tagSpecPatName Csr = op2TagName
+    tagSpecPatName RS1 = op1MetaSetName
+    tagSpecPatName RS2 = op2MetaSetName
+    tagSpecPatName RS3 = op3MetaSetName
+    tagSpecPatName Mem = memMetaSetName
+    tagSpecPatName Csr = op2MetaSetName
     tagSpecPatName ts =
       error $ "Error: illegal tag spec " ++ show ts
           ++ " in LHS of opgroup definition of " ++ tagString og ++ ".\n"
 
     standardOperands :: [(QSym, String)]
-    standardOperands = [(QVar ["env"],pcTagName),
-                        (QVar ["code"],ciTagName)]
+    standardOperands = [(QVar ["env"],pcMetaSetName),
+                        (QVar ["code"],ciMetaSetName)]
 
 expOperands :: OpGroupMap -> QSym -> [(QSym, String)]
 expOperands ogMap og =
@@ -532,12 +532,6 @@ policyEval :: Bool -> Bool -> ModSymbols -> OpGroupMap
 policyEval debug _profile ms ogMap tagInfo (modN, pd@(PolicyDecl _ _ _ pEx)) =
   [cedecl|
        int $id:(singlePolicyEvalName pd) ($params:policyInputParams) {
-         const typename meta_set_t* $id:pcTagName = $id:pcArgName != -1 ? get_ms($id:pcArgName) : NULL;
-         const typename meta_set_t* $id:ciTagName = $id:ciArgName != -1 ? get_ms($id:ciArgName) : NULL;
-         const typename meta_set_t* $id:op1TagName = $id:op1ArgName != -1 ? get_ms($id:op1ArgName) : NULL;
-         const typename meta_set_t* $id:op2TagName = $id:op2ArgName != -1 ? get_ms($id:op2ArgName) : NULL;
-         const typename meta_set_t* $id:op3TagName = $id:op3ArgName != -1 ? get_ms($id:op3ArgName) : NULL;
-         const typename meta_set_t* $id:memTagName = $id:memArgName != -1 ? get_ms($id:memArgName) : NULL;
 
          $stm:body
 
@@ -589,7 +583,7 @@ translatePolicy _ _ _ _ _ _
 translatePolicy dbg ms ogMap pd tagInfo modN
                 (PERule _ rc@(RuleClause _ ogrp rpat Nothing rres)) =
   [citems|
-       if(ms_contains($id:ciTagName,$id:(tagName (qualifiedOpGrpMacro)))) {
+       if(ms_contains($id:ciMetaSetName,$id:(tagName (qualifiedOpGrpMacro)))) {
          int $id:matchVar = $exp:patExp;
          if ($id:matchVar) {
            $stms:debugPrints
@@ -669,7 +663,7 @@ translatePatterns ms mn mask tagInfo ogmap pats =
     -- default binding for the env var, syntax sugar to allow it to be used in result
     -- without having been defined
     defaultEnv :: [(QSym,Exp)]
-    defaultEnv = [(QVar ["env"],[cexp|$id:pcTagName|])]
+    defaultEnv = [(QVar ["env"],[cexp|$id:pcMetaSetName|])]
     patternAcc :: (Exp,[(QSym,Exp)]) -> BoundGroupPat QSym
                -> (Exp,[(QSym,Exp)])
     patternAcc (e,ids) pat =
