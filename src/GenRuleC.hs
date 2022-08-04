@@ -88,7 +88,8 @@ opsSetsArgName = operandsArgName ++ "->"
 resSetsArgName = resultsArgName ++ "->"
 contextArgName = "ctx"
 
-operandsArgName, resultsArgName, resultsPC, resultsRD, resultsCSR :: String
+metaSetsArgName, operandsArgName, resultsArgName, resultsPC, resultsRD, resultsCSR :: String
+metaSetsArgName = "ms_"
 operandsArgName = "ops"
 resultsArgName = "res"
 resultsPC = resSetsArgName ++ "pc"
@@ -96,12 +97,20 @@ resultsRD = resSetsArgName ++ "rd"
 resultsCSR = resSetsArgName ++ "csr"
 
 pcMetaSetName,ciMetaSetName,op1MetaSetName,op2MetaSetName,op3MetaSetName,memMetaSetName :: String
-pcMetaSetName = "get_ms(" ++ pcArgName ++ ")"
-ciMetaSetName = "get_ms(" ++ ciArgName ++ ")"
-op1MetaSetName = "get_ms(" ++ op1ArgName ++ ")"
-op2MetaSetName = "get_ms(" ++ op2ArgName ++ ")"
-op3MetaSetName = "get_ms(" ++ op3ArgName ++ ")"
-memMetaSetName = "get_ms(" ++ memArgName ++ ")"
+pcMetaSetName = metaSetsArgName ++ "pc"
+ciMetaSetName = metaSetsArgName ++ "ci"
+op1MetaSetName = metaSetsArgName ++ "op1"
+op2MetaSetName = metaSetsArgName ++ "op2"
+op3MetaSetName = metaSetsArgName ++ "op3"
+memMetaSetName = metaSetsArgName ++ "mem"
+
+pcGetMetaSetName,ciGetMetaSetName,op1GetMetaSetName,op2GetMetaSetName,op3GetMetaSetName,memGetMetaSetName :: String
+pcGetMetaSetName = "get_ms(" ++ pcArgName ++ ")"
+ciGetMetaSetName = "get_ms(" ++ ciArgName ++ ")"
+op1GetMetaSetName = "get_ms(" ++ op1ArgName ++ ")"
+op2GetMetaSetName = "get_ms(" ++ op2ArgName ++ ")"
+op3GetMetaSetName = "get_ms(" ++ op3ArgName ++ ")"
+memGetMetaSetName = "get_ms(" ++ memArgName ++ ")"
 
 -- For convenience, we define a few commonly used types and parameter/argument
 -- lists.
@@ -532,6 +541,13 @@ policyEval :: Bool -> Bool -> ModSymbols -> OpGroupMap
 policyEval debug _profile ms ogMap tagInfo (modN, pd@(PolicyDecl _ _ _ pEx)) =
   [cedecl|
        int $id:(singlePolicyEvalName pd) ($params:policyInputParams) {
+
+         typename meta_set_t* $id:pcMetaSetName = $id:pcGetMetaSetName;
+         typename meta_set_t* $id:ciMetaSetName = $id:ciGetMetaSetName;
+         typename meta_set_t* $id:op1MetaSetName = $id:op1GetMetaSetName;
+         typename meta_set_t* $id:op2MetaSetName = $id:op2GetMetaSetName;
+         typename meta_set_t* $id:op3MetaSetName = $id:op3GetMetaSetName;
+         typename meta_set_t* $id:memMetaSetName = $id:memGetMetaSetName;
 
          $stm:body
 
