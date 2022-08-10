@@ -48,6 +48,7 @@ tagSetHeader (TagInfo {tiMaxTag,tiArrayLength,
   ,"#include <stdint.h>"
   ,"#include <stdbool.h>"
   ,"#include <stddef.h>"
+  ,"#include \"tag_types.h\""
   ,""
   , "#ifdef __cplusplus"
   , "extern \"C\" {"
@@ -85,15 +86,14 @@ tagSetFooter = unlines
 
 tagSetBody :: [Definition]
 tagSetBody = [cunit|
-  typedef typename intptr_t tag_t;
   typedef typename uintptr_t meta_t;
 
   typedef struct {
     typename META_SET_TAG_TYPE tags[ META_SET_WORDS ];
   } meta_set_t;
 
-  tag_t canonize(const meta_set_t* ts);
-  const meta_set_t* get_ms(tag_t tag);
+  typename tag_t canonize(const meta_set_t* ts);
+  const meta_set_t* get_ms(typename tag_t tag);
   typename bool ms_contains(const meta_set_t* ms, meta_t m);
   typename bool ms_eq(const meta_set_t* ms1, const meta_set_t* ms2);
   void ms_bit_add(meta_set_t* ms, meta_t m);
