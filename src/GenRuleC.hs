@@ -230,18 +230,18 @@ patOperands ogMap og =
                        $ ognPats ogNames)
   where
     tagSpecPatName :: TagSpec -> String
-    tagSpecPatName RS1 = op1MetaSetName
-    tagSpecPatName RS2 = op2MetaSetName
-    tagSpecPatName RS3 = op3MetaSetName
-    tagSpecPatName Mem = memMetaSetName
-    tagSpecPatName Csr = op2MetaSetName
+    tagSpecPatName RS1 = op1ArgName
+    tagSpecPatName RS2 = op2ArgName
+    tagSpecPatName RS3 = op3ArgName
+    tagSpecPatName Mem = memArgName
+    tagSpecPatName Csr = op2ArgName
     tagSpecPatName ts =
       error $ "Error: illegal tag spec " ++ show ts
           ++ " in LHS of opgroup definition of " ++ tagString og ++ ".\n"
 
     standardOperands :: [(QSym, String)]
-    standardOperands = [(QVar ["env"],pcMetaSetName),
-                        (QVar ["code"],ciMetaSetName)]
+    standardOperands = [(QVar ["env"],pcArgName),
+                        (QVar ["code"],ciArgName)]
 
 expOperands :: OpGroupMap -> QSym -> [(QSym, String)]
 expOperands ogMap og =
@@ -679,7 +679,7 @@ translatePatterns ms mn mask tagInfo ogmap pats =
     -- default binding for the env var, syntax sugar to allow it to be used in result
     -- without having been defined
     defaultEnv :: [(QSym,Exp)]
-    defaultEnv = [(QVar ["env"],[cexp|$id:pcMetaSetName|])]
+    defaultEnv = [(QVar ["env"],[cexp|$id:pcArgName|])]
     patternAcc :: (Exp,[(QSym,Exp)]) -> BoundGroupPat QSym
                -> (Exp,[(QSym,Exp)])
     patternAcc (e,ids) pat =
@@ -762,7 +762,7 @@ translatePatterns ms mn mask tagInfo ogmap pats =
 
         checkField :: (Word32,Exp) -> Exp
         checkField (idx,val) =
-          [cexp|((($id:ts->tags)[$exp:idx]) & $id:mask[$idx]) == $exp:val|]
+          [cexp|(((get_ms($id:ts)->tags)[$exp:idx]) & $id:mask[$idx]) == $exp:val|]
 
     -- These build a C boolean expression that checks whether a tag set (first
     -- argument) contains or does not contain a particular tag (second
@@ -774,17 +774,17 @@ translatePatterns ms mn mask tagInfo ogmap pats =
         Nothing -> error $ "Internal error: tag " ++ tagString qn
                         ++ " missing from tagArgInfo map in checkContains."
         Just argInfo ->
-           ([cexp|ms_contains($id:ts,$id:(tagName qn))|],
+           ([cexp|ms_contains(get_ms($id:ts),$id:(tagName qn))|],
             mapMaybe (argBinding ts) $
               zipWith (\(idx,_) bnd -> (idx,bnd)) argInfo args)
     checkAbsent ts (Tag _ qn _) =
-      ([cexp|(!(ms_contains($id:ts,$id:(tagName qn))))|],[])
+      ([cexp|(!(ms_contains(get_ms($id:ts),$id:(tagName qn))))|],[])
 
     argBinding :: String -> (Word32,TagField QSym) -> Maybe (QSym,Exp)
     argBinding _ (_,TFNew p) =
       error $ "Illegal: Attempt to create \"new\" tag data in pattern "
            ++ "at " ++ ppSrcPos p
-    argBinding ts (idx,TFVar _ v) = Just (v,[cexp|($id:ts -> tags)[$int:idx]|])
+    argBinding ts (idx,TFVar _ v) = Just (v,[cexp|(get_ms($id:ts) -> tags)[$int:idx]|])
     argBinding _ (_,TFAny _) = Nothing
     argBinding _ (_,TFInt p _) =
       error $ "Unsupported: Specific integer in tag field pattern at "
@@ -949,7 +949,7 @@ translateTagSetEx _ _ vars resVar varMap _ (TSEVar loc y) =
   case lookup y varMap of
     Nothing -> error $ "Rule result uses unbound variable " ++ show y
                     ++ "(" ++ ppSrcPos loc ++ ")"
-    Just ts -> ([citems|memcpy(&$id:resVar,$exp:ts,sizeof(typename meta_set_t));|],
+    Just ts -> ([citems|memcpy(&$id:resVar,get_ms($exp:ts),sizeof(typename meta_set_t));|],
                 vars)
 translateTagSetEx ms mn vars resVar varMap tagInfo (TSEExact _ tags) =
   (map (\(idx,val) -> [citem|$id:resVar.tags[$exp:idx] = $exp:val;|]) exactFields,
