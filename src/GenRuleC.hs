@@ -88,12 +88,29 @@ opsSetsArgName = operandsArgName ++ "->"
 resSetsArgName = resultsArgName ++ "->"
 contextArgName = "ctx"
 
-operandsArgName, resultsArgName, resultsPC, resultsRD, resultsCSR :: String
+metaSetsArgName, operandsArgName, resultsArgName, resultsPC, resultsRD, resultsCSR :: String
+metaSetsArgName = "ms_"
 operandsArgName = "ops"
 resultsArgName = "res"
 resultsPC = resSetsArgName ++ "pc"
 resultsRD = resSetsArgName ++ "rd"
 resultsCSR = resSetsArgName ++ "csr"
+
+pcMetaSetName,ciMetaSetName,op1MetaSetName,op2MetaSetName,op3MetaSetName,memMetaSetName :: String
+pcMetaSetName = metaSetsArgName ++ "pc"
+ciMetaSetName = metaSetsArgName ++ "ci"
+op1MetaSetName = metaSetsArgName ++ "op1"
+op2MetaSetName = metaSetsArgName ++ "op2"
+op3MetaSetName = metaSetsArgName ++ "op3"
+memMetaSetName = metaSetsArgName ++ "mem"
+
+pcGetMetaSetName,ciGetMetaSetName,op1GetMetaSetName,op2GetMetaSetName,op3GetMetaSetName,memGetMetaSetName :: String
+pcGetMetaSetName = "get_ms(" ++ pcArgName ++ ")"
+ciGetMetaSetName = "get_ms(" ++ ciArgName ++ ")"
+op1GetMetaSetName = "get_ms(" ++ op1ArgName ++ ")"
+op2GetMetaSetName = "get_ms(" ++ op2ArgName ++ ")"
+op3GetMetaSetName = "get_ms(" ++ op3ArgName ++ ")"
+memGetMetaSetName = "get_ms(" ++ memArgName ++ ")"
 
 -- For convenience, we define a few commonly used types and parameter/argument
 -- lists.
@@ -109,7 +126,7 @@ resultsType = [cty| typename results_t |]
 policyInputParams :: [Param]
 policyInputParams =
   [cparams|$ty:contextType* $id:contextArgName,
-           $ty:operandsType* $id:operandsArgName,
+           const $ty:operandsType* $id:operandsArgName,
            $ty:resultsType* $id:resultsArgName|]
 
 policyInputArgs :: [Exp]
@@ -525,6 +542,13 @@ policyEval debug _profile ms ogMap tagInfo (modN, pd@(PolicyDecl _ _ _ pEx)) =
   [cedecl|
        int $id:(singlePolicyEvalName pd) ($params:policyInputParams) {
 
+         typename meta_set_t* $id:pcMetaSetName = $id:pcGetMetaSetName;
+         typename meta_set_t* $id:ciMetaSetName = $id:ciGetMetaSetName;
+         typename meta_set_t* $id:op1MetaSetName = $id:op1GetMetaSetName;
+         typename meta_set_t* $id:op2MetaSetName = $id:op2GetMetaSetName;
+         typename meta_set_t* $id:op3MetaSetName = $id:op3GetMetaSetName;
+         typename meta_set_t* $id:memMetaSetName = $id:memGetMetaSetName;
+
          $stm:body
 
          // Each result clause returns, so if we reach here it is an implicit failure.
@@ -575,7 +599,7 @@ translatePolicy _ _ _ _ _ _
 translatePolicy dbg ms ogMap pd tagInfo modN
                 (PERule _ rc@(RuleClause _ ogrp rpat Nothing rres)) =
   [citems|
-       if(ms_contains($id:ciArgName,$id:(tagName (qualifiedOpGrpMacro)))) {
+       if(ms_contains($id:ciMetaSetName,$id:(tagName (qualifiedOpGrpMacro)))) {
          int $id:matchVar = $exp:patExp;
          if ($id:matchVar) {
            $stms:debugPrints
@@ -738,7 +762,7 @@ translatePatterns ms mn mask tagInfo ogmap pats =
 
         checkField :: (Word32,Exp) -> Exp
         checkField (idx,val) =
-          [cexp|((($id:ts->tags)[$exp:idx]) & $id:mask[$idx]) == $exp:val|]
+          [cexp|(((get_ms($id:ts)->tags)[$exp:idx]) & $id:mask[$idx]) == $exp:val|]
 
     -- These build a C boolean expression that checks whether a tag set (first
     -- argument) contains or does not contain a particular tag (second
@@ -750,17 +774,17 @@ translatePatterns ms mn mask tagInfo ogmap pats =
         Nothing -> error $ "Internal error: tag " ++ tagString qn
                         ++ " missing from tagArgInfo map in checkContains."
         Just argInfo ->
-           ([cexp|ms_contains($id:ts,$id:(tagName qn))|],
+           ([cexp|ms_contains(get_ms($id:ts),$id:(tagName qn))|],
             mapMaybe (argBinding ts) $
               zipWith (\(idx,_) bnd -> (idx,bnd)) argInfo args)
     checkAbsent ts (Tag _ qn _) =
-      ([cexp|(!(ms_contains($id:ts,$id:(tagName qn))))|],[])
+      ([cexp|(!(ms_contains(get_ms($id:ts),$id:(tagName qn))))|],[])
 
     argBinding :: String -> (Word32,TagField QSym) -> Maybe (QSym,Exp)
     argBinding _ (_,TFNew p) =
       error $ "Illegal: Attempt to create \"new\" tag data in pattern "
            ++ "at " ++ ppSrcPos p
-    argBinding ts (idx,TFVar _ v) = Just (v,[cexp|($id:ts -> tags)[$int:idx]|])
+    argBinding ts (idx,TFVar _ v) = Just (v,[cexp|(get_ms($id:ts) -> tags)[$int:idx]|])
     argBinding _ (_,TFAny _) = Nothing
     argBinding _ (_,TFInt p _) =
       error $ "Unsupported: Specific integer in tag field pattern at "
@@ -860,17 +884,24 @@ translateBoundGroupEx ms mn mask ogMap varMap tagInfo (BoundGroupEx loc opr tse)
       -- preserved.  This may be wrong, though, for "global" policies like the
       -- loader.
       [citems|
-        { typename meta_set_t $id:topVar;
+        { typename meta_set_t res_tmp;
+          if ($id:resHasResult) {
+            memcpy(&res_tmp, get_ms($id:resPositionName), sizeof(typename meta_set_t));
+          } else {
+            memset(&res_tmp, 0, sizeof(typename meta_set_t));
+          }
+          typename meta_set_t $id:topVar;
           $items:evalItems;
           for(int i = 0; i < META_SET_BITFIELDS; i++) {
-              ($id:resPositionName)->tags[i] |= ($id:topVar.tags[i] & $id:mask[i]);
+              res_tmp.tags[i] |= ($id:topVar.tags[i] & $id:mask[i]);
           }
           for(int i = META_SET_BITFIELDS; i < META_SET_WORDS; i++) {
             if($id:mask[i]) {
-              $id:resPositionName->tags[i] =
+              res_tmp.tags[i] =
                 $id:topVar.tags[i];
             }
           }
+          $id:resPositionName = canonize(&res_tmp);
           $id:resHasResult = true;
         }
       |]
@@ -918,7 +949,7 @@ translateTagSetEx _ _ vars resVar varMap _ (TSEVar loc y) =
   case lookup y varMap of
     Nothing -> error $ "Rule result uses unbound variable " ++ show y
                     ++ "(" ++ ppSrcPos loc ++ ")"
-    Just ts -> ([citems|memcpy(&$id:resVar,$exp:ts,sizeof(typename meta_set_t));|],
+    Just ts -> ([citems|memcpy(&$id:resVar,get_ms($exp:ts),sizeof(typename meta_set_t));|],
                 vars)
 translateTagSetEx ms mn vars resVar varMap tagInfo (TSEExact _ tags) =
   (map (\(idx,val) -> [citem|$id:resVar.tags[$exp:idx] = $exp:val;|]) exactFields,
